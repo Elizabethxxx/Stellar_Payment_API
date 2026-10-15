@@ -121,6 +121,8 @@ export class ExchangeRateCoordinator {
    * @param {number} [opts.pollIntervalMs] follower poll cadence
    * @param {string} [opts.keyPrefix]
    * @param {(data: unknown) => boolean} [opts.validate] shared-entry validator
+   * @param {(data: unknown) => unknown|null} [opts.sanitize] optional allow-list
+   *   rebuild applied after validation; returning null rejects the entry (#1442)
    * @param {object|null} [opts.metrics]
    */
   constructor({
@@ -131,6 +133,7 @@ export class ExchangeRateCoordinator {
     pollIntervalMs = readIntEnv('EXCHANGE_RATE_LOCK_POLL_MS', 50),
     keyPrefix = 'exrate:',
     validate = isValidQuote,
+    sanitize = null,
     metrics = DEFAULT_METRICS,
   } = {}) {
     if (!redisClient || typeof redisClient.sendCommand !== 'function') {
@@ -144,6 +147,7 @@ export class ExchangeRateCoordinator {
     this.quotePrefix = `${keyPrefix}quote:`;
     this.lock = new RedisLock(redisClient, { prefix: `${keyPrefix}lock:` });
     this.validate = validate;
+    this.sanitize = typeof sanitize === 'function' ? sanitize : null;
     this.metrics = metrics;
   }
 
@@ -161,8 +165,11 @@ export class ExchangeRateCoordinator {
     try {
       const entry = JSON.parse(String(raw));
       if (entry?.v === SHARED_ENTRY_VERSION && this.validate(entry.data)) {
-        this.metrics?.shared?.inc?.({ result: 'hit' });
-        return entry.data;
+        const data = this.sanitize ? this.sanitize(entry.data) : entry.data;
+        if (data !== null && data !== undefined) {
+          this.metrics?.shared?.inc?.({ result: 'hit' });
+          return data;
+        }
       }
     } catch {
       // fall through: treat unparsable content as a miss

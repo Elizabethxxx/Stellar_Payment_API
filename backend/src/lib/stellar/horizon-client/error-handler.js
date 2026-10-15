@@ -53,8 +53,8 @@ export function isRetryableError(err) {
     return true;
   }
 
-  // Retry on network errors
-  const code = String(err?.code || "").toUpperCase();
+  // Retry on network errors. undici/fetch put the system code on `cause`.
+  const code = String(err?.code || err?.cause?.code || "").toUpperCase();
   if (RETRYABLE_ERROR_CODES.includes(code)) {
     return true;
   }
@@ -63,8 +63,14 @@ export function isRetryableError(err) {
     return true;
   }
 
-  // Retry on timeout/temporary errors in message
+  // Retry on timeout/temporary errors in message. The Stellar SDK rethrows
+  // transport failures as plain Errors ("connect ECONNREFUSED 1.2.3.4:443")
+  // without a `code`, so system codes are matched in the message too.
   const message = String(err?.message || "");
+  const upperMessage = message.toUpperCase();
+  if (RETRYABLE_ERROR_CODES.some((retryableCode) => upperMessage.includes(retryableCode))) {
+    return true;
+  }
   return RETRYABLE_MESSAGE_PATTERNS.some(pattern => 
     new RegExp(pattern, "i").test(message)
   );

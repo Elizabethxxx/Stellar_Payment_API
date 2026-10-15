@@ -87,7 +87,7 @@ describe("GET /api/path-payment-quote/:id — authentication (issue #1309)", () 
 describe("GET /api/path-payment-quote/:id", () => {
   const paymentId = "9f927a2c-02d4-4f76-914c-62cf44d9525e";
   const sourceAccount =
-    "GBRPYHIL2C7Q7PGLUKSTPIY2KPJ7QMZ4ZWJHQ6GUSIW2LQAHOMK5N7BI";
+    "GDESJRNS3IREXNSFMC35XM2CHEESOKAWQL2SXBK4AUIKNKCIYBMW4TDJ";
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -100,7 +100,7 @@ describe("GET /api/path-payment-quote/:id", () => {
         id: paymentId,
         amount: 25,
         asset: "USDC",
-        asset_issuer: "GDQOE23W4QK6WQ4R3BVCUO3PRA4VJ7A3M7MRWWX4V67WJYQ7QXKJQ4KJ",
+        asset_issuer: "GA5HBVNVS6P3QJ2ZGLMEACPSGFG3KDCAFTVHNJXWG22E5DVZTPSSAWQW",
         recipient: "GB6REFUNDTESTRECIPIENTQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ",
         status: "pending",
       }),
@@ -136,7 +136,7 @@ describe("GET /api/path-payment-quote/:id", () => {
       source_amount: "60.1250000",
       send_max: "60.7262500",
       destination_asset: "USDC",
-      destination_asset_issuer: "GDQOE23W4QK6WQ4R3BVCUO3PRA4VJ7A3M7MRWWX4V67WJYQ7QXKJQ4KJ",
+      destination_asset_issuer: "GA5HBVNVS6P3QJ2ZGLMEACPSGFG3KDCAFTVHNJXWG22E5DVZTPSSAWQW",
       destination_amount: "25",
       path: [],
       slippage: 0.01,
@@ -144,7 +144,7 @@ describe("GET /api/path-payment-quote/:id", () => {
     expect(findStrictReceivePaths).toHaveBeenCalledWith({
       sourceAccount,
       destAssetCode: "USDC",
-      destAssetIssuer: "GDQOE23W4QK6WQ4R3BVCUO3PRA4VJ7A3M7MRWWX4V67WJYQ7QXKJQ4KJ",
+      destAssetIssuer: "GA5HBVNVS6P3QJ2ZGLMEACPSGFG3KDCAFTVHNJXWG22E5DVZTPSSAWQW",
       destAmount: "25",
       sourceAssetCode: "XLM",
       sourceAssetIssuer: null,
@@ -190,7 +190,7 @@ describe("GET /api/path-payment-quote/:id", () => {
         id: paymentId,
         amount: 10,
         asset: "USDC",
-        asset_issuer: "GDQOE23W4QK6WQ4R3BVCUO3PRA4VJ7A3M7MRWWX4V67WJYQ7QXKJQ4KJ",
+        asset_issuer: "GA5HBVNVS6P3QJ2ZGLMEACPSGFG3KDCAFTVHNJXWG22E5DVZTPSSAWQW",
         recipient: "GB6REFUNDTESTRECIPIENTQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ",
         status: "confirmed",
       }),
@@ -224,7 +224,7 @@ describe("GET /api/path-payment-quote/:id", () => {
 describe("GET /api/path-payment-quote/:id — quote cache (issue #1045)", () => {
   const paymentId = "9f927a2c-02d4-4f76-914c-62cf44d9525e";
   const sourceAccount =
-    "GBRPYHIL2C7Q7PGLUKSTPIY2KPJ7QMZ4ZWJHQ6GUSIW2LQAHOMK5N7BI";
+    "GDESJRNS3IREXNSFMC35XM2CHEESOKAWQL2SXBK4AUIKNKCIYBMW4TDJ";
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -234,7 +234,7 @@ describe("GET /api/path-payment-quote/:id — quote cache (issue #1045)", () => 
         id: paymentId,
         amount: 25,
         asset: "USDC",
-        asset_issuer: "GDQOE23W4QK6WQ4R3BVCUO3PRA4VJ7A3M7MRWWX4V67WJYQ7QXKJQ4KJ",
+        asset_issuer: "GA5HBVNVS6P3QJ2ZGLMEACPSGFG3KDCAFTVHNJXWG22E5DVZTPSSAWQW",
         recipient: "GB6REFUNDTESTRECIPIENTQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ",
         status: "pending",
       }),
@@ -288,6 +288,7 @@ describe("GET /api/path-payment-quote/:id — quote cache (issue #1045)", () => 
         params: { id: paymentId },
         query: {
           source_asset: "EUR",
+          source_asset_issuer: "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
           source_account: sourceAccount,
         },
         merchant: { id: "merchant-1" },
@@ -310,7 +311,7 @@ describe("GET /api/path-payment-quote/:id — quote cache (issue #1045)", () => 
         id: paymentId,
         amount: 25,
         asset: "USDC",
-        asset_issuer: "GDQOE23W4QK6WQ4R3BVCUO3PRA4VJ7A3M7MRWWX4V67WJYQ7QXKJQ4KJ",
+        asset_issuer: "GA5HBVNVS6P3QJ2ZGLMEACPSGFG3KDCAFTVHNJXWG22E5DVZTPSSAWQW",
         recipient: "GB6REFUNDTESTRECIPIENTQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ",
         status: "confirmed",
       }),
@@ -344,5 +345,62 @@ describe("GET /api/path-payment-quote/:id — quote cache (issue #1045)", () => 
 
     expect(secondRes.statusCode).toBe(200);
     expect(findStrictReceivePaths).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("GET /api/path-payment-quote/:id — payload validation (issue #1442)", () => {
+  const paymentId = "9f927a2c-02d4-4f76-914c-62cf44d9525e";
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetExchangeRateCache();
+    supabaseFrom.mockReturnValue(
+      createSupabaseSelectMock({
+        id: paymentId,
+        amount: 25,
+        asset: "USDC",
+        asset_issuer: "GA5HBVNVS6P3QJ2ZGLMEACPSGFG3KDCAFTVHNJXWG22E5DVZTPSSAWQW",
+        recipient: "GA5HBVNVS6P3QJ2ZGLMEACPSGFG3KDCAFTVHNJXWG22E5DVZTPSSAWQW",
+        status: "pending",
+      }),
+    );
+  });
+
+  it("rejects a credit source asset without an issuer with 400 before querying Horizon", async () => {
+    const res = createMockResponse();
+    const next = vi.fn();
+    await getPathPaymentQuoteHandler()(
+      {
+        params: { id: paymentId },
+        query: { source_asset: "EUR" },
+        merchant: { id: "merchant-1" },
+      },
+      res,
+      next,
+    );
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toMatchObject({ field: "sourceAssetIssuer" });
+    expect(findStrictReceivePaths).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("rejects an issuer with a bad checksum", async () => {
+    const res = createMockResponse();
+    await getPathPaymentQuoteHandler()(
+      {
+        params: { id: paymentId },
+        query: {
+          source_asset: "EUR",
+          source_asset_issuer: "GA5HBVNVS6P3QJ2ZGLMEACPSGFG3KDCAFTVHNJXWG22E5DVZTPSSAWQA",
+        },
+        merchant: { id: "merchant-1" },
+      },
+      res,
+      vi.fn(),
+    );
+
+    expect(res.statusCode).toBe(400);
+    expect(findStrictReceivePaths).not.toHaveBeenCalled();
   });
 });
