@@ -890,6 +890,30 @@ export const horizonClientOperationSuccessRate = new client.Gauge({
   labelNames: ["operation"],
 });
 
+// Retry Manager alert metrics and health telemetry (Issue #1438)
+export const horizonClientRetryExhausted = new client.Counter({
+  name: "horizon_client_retry_exhausted_total",
+  help: "Horizon client operations that failed after exhausting every retry",
+  labelNames: ["operation", "error_type"],
+});
+
+export const horizonClientConsecutiveFailures = new client.Gauge({
+  name: "horizon_client_consecutive_failures",
+  help: "Consecutive infrastructure failures per Horizon client operation (reset on success)",
+  labelNames: ["operation"],
+});
+
+export const horizonClientLastSuccessTimestamp = new client.Gauge({
+  name: "horizon_client_last_success_timestamp_seconds",
+  help: "Unix timestamp of the last successful Horizon client operation",
+  labelNames: ["operation"],
+});
+
+export const horizonClientHealthState = new client.Gauge({
+  name: "horizon_client_health_state",
+  help: "Horizon client retry manager health (0=healthy, 1=degraded, 2=unhealthy)",
+});
+
 export const paymentMatchingOperations = new client.Counter({
   name: "payment_matching_operations_total",
   help: "Total number of payment matching operations",
@@ -1111,6 +1135,10 @@ register.registerMetric(horizonClientSerializationErrors);
 register.registerMetric(horizonClientRateLimitWaitTime);
 register.registerMetric(horizonClientThroughput);
 register.registerMetric(horizonClientOperationSuccessRate);
+register.registerMetric(horizonClientRetryExhausted);
+register.registerMetric(horizonClientConsecutiveFailures);
+register.registerMetric(horizonClientLastSuccessTimestamp);
+register.registerMetric(horizonClientHealthState);
 register.registerMetric(paymentMatchingOperations);
 register.registerMetric(paymentMatchingErrors);
 register.registerMetric(signatureVerificationOperations);

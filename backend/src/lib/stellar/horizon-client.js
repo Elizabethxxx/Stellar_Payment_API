@@ -31,7 +31,10 @@ export class HorizonClient {
     this.healthTimeout = options.healthTimeout || DEFAULT_HEALTH_TIMEOUT_MS;
     
     this.server = new StellarSdk.Horizon.Server(this.horizonUrl);
-    this.retryManager = createRetryManager(this.retryDelays);
+    this.retryManager = createRetryManager(this.retryDelays, {
+      unhealthyAfterFailures: options.unhealthyAfterFailures,
+    });
+    this.lastHealthCheck = null;
     
     // Track active connections
     horizonClientConnections.inc();
@@ -71,6 +74,7 @@ export class HorizonClient {
         operation: "health_check", 
         result: isReachable ? "success" : "failure" 
       }, duration);
+      this._recordHealthCheck(isReachable, duration, isReachable ? null : `http_${response.status}`);
       
       return isReachable;
     } catch (err) {
@@ -83,6 +87,7 @@ export class HorizonClient {
         operation: "health_check", 
         error_type: classifyError(err) 
       });
+      this._recordHealthCheck(false, duration, classifyError(err));
       
       return false;
     } finally {
@@ -169,6 +174,37 @@ export class HorizonClient {
       retryDelays: this.retryDelays,
       healthTimeout: this.healthTimeout,
       retryManager: this.retryManager.getConfig(),
+    };
+  }
+
+  /**
+   * Remember the outcome of the last reachability probe (#1438).
+   * @private
+   */
+  _recordHealthCheck(reachable, durationSeconds, errorType) {
+    this.lastHealthCheck = {
+      reachable,
+      durationMs: Math.round(durationSeconds * 1000),
+      errorType,
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Health telemetry (#1438): retry-manager per-operation health plus the
+   * last reachability probe. A failed probe marks an otherwise healthy client
+   * as degraded.
+   */
+  getHealth() {
+    const health = this.retryManager.getHealth();
+    const status =
+      health.status === "healthy" && this.lastHealthCheck?.reachable === false
+        ? "degraded"
+        : health.status;
+    return {
+      ...health,
+      status,
+      lastHealthCheck: this.lastHealthCheck,
     };
   }
 

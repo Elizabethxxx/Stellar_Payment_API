@@ -1,0 +1,47 @@
+# Prometheus alerting rules for WebSocket Relay distributed locking (issue #1455).
+#
+# Load with:   rule_files: ["docs/alerts/websocket-relay-locking.rules.yml"]
+# Validate:    promtool check rules docs/alerts/websocket-relay-locking.rules.yml
+#
+# Metric reference: docs/WEBSOCKET_RELAY_CONCURRENCY.md
+
+groups:
+  - name: websocket-relay-locking
+    rules:
+      - alert: WebSocketRelayLockLost
+        expr: sum by (scope) (increase(relay_lock_lost_total[10m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "WebSocket relay lost a {{ $labels.scope }} lock mid-work"
+          description: >
+            A lease could not be renewed while work was running, so the work was
+            aborted. Usually Redis latency, a Redis failover or an event loop
+            stall longer than the lock TTL.
+
+      - alert: WebSocketRelayLockBackendErrors
+        expr: sum(increase(relay_lock_acquisitions_total{result="error"}[5m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: WebSocket relay is falling back to in-process locks
+          description: >
+            Redis SET NX is failing, so locks are only enforced per instance.
+            Cross-instance duplicate delivery is possible until Redis recovers.
+
+      - alert: WebSocketRelayHighLockContention
+        expr: |
+          sum by (scope) (rate(relay_lock_acquisitions_total{result="contended"}[10m]))
+            /
+          clamp_min(sum by (scope) (rate(relay_lock_acquisitions_total[10m])), 1e-9)
+            > 0.5
+        for: 15m
+        labels:
+          severity: info
+        annotations:
+          summary: "Over half of {{ $labels.scope }} lock attempts are contended"
+          description: >
+            Workers are mostly competing for the same resources. Consider
+            partitioning work or lowering the number of relay consumers.
