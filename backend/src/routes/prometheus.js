@@ -15,6 +15,12 @@ import { paymentSessionValidatorRegister } from "../lib/payment-session-validato
 // Exchange Rate Oracle Cache alert metrics live in their own registry (issue #1443)
 // and are merged into the scrape output below.
 import { exchangeRateOracleRegister } from "../lib/exchange-rate-oracle-telemetry.js";
+// SEP-0001 Stellar Info Generator alert metrics live in their own registry (issue #1458)
+// and are merged into the scrape output below.
+import { sep0001Register } from "../lib/sep0001-telemetry.js";
+// Idempotency Key Manager retry metrics live in their own registry (issue #1464)
+// and are merged into the scrape output below.
+import { idempotencyRegister } from "../lib/idempotency-retry.js";
 
 const router = express.Router();
 
@@ -23,7 +29,7 @@ const router = express.Router();
  * /metrics:
  *   get:
  *     summary: Expose Prometheus metrics
- *     description: Returns the current state of Prometheus metrics for the application, including granular payment processor, trustline manager, path payment, payment session validator and exchange-rate oracle cache metrics.
+ *     description: Returns the current state of Prometheus metrics for the application, including granular payment processor, trustline manager, path payment, payment session validator, exchange-rate oracle cache, SEP-0001 generator and idempotency retry metrics.
  *     tags: [Monitoring]
  *     responses:
  *       200:
@@ -42,6 +48,8 @@ router.get("/metrics", async (req, res) => {
       pathPaymentRegister.metrics(),
       paymentSessionValidatorRegister.metrics(),
       exchangeRateOracleRegister.metrics(),
+      sep0001Register.metrics(),
+      idempotencyRegister.metrics(),
     ]);
     res.set("Content-Type", register.contentType);
     res.end(scrapes.join("\n"));

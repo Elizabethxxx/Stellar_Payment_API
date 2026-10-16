@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { getRedisClient } from "./redis.js";
+import { withIdempotencyRetry } from "./idempotency-retry.js";
 
 /**
  * TTL for idempotency cache entries in seconds.
@@ -29,11 +30,14 @@ export function hashIdempotencyPayload(body) {
  * (exposed as `req.idempotency.payloadHash`), because downstream Zod schemas
  * may transform `req.body`.
  *
+ * Transient Redis errors are retried with exponential backoff (issue #1464).
+ *
  * @returns {Promise<null | {status:"hit", response:object} | {status:"mismatch"}>}
  */
-export async function lookupIdempotentResponse({ redisClient, merchantId, idempotencyKey, payloadHash }) {
+export async function lookupIdempotentResponse({ redisClient, merchantId, idempotencyKey, payloadHash, retryOptions }) {
   if (!redisClient || !merchantId || !idempotencyKey || !payloadHash) return null;
-  const cachedValue = await redisClient.get(buildIdempotencyRedisKey(merchantId, idempotencyKey));
+  const redisKey = buildIdempotencyRedisKey(merchantId, idempotencyKey);
+  const cachedValue = await withIdempotencyRetry("lookup", () => redisClient.get(redisKey), retryOptions);
   if (!cachedValue) return null;
 
   const { hash, response } = JSON.parse(cachedValue);
@@ -48,6 +52,10 @@ export async function lookupIdempotentResponse({ redisClient, merchantId, idempo
  * Tracks the key tied to the payload hash and response.
  * Returns a cached 201 response if the key matches a previous request.
  * Stores cached state in Redis for 24h.
+ *
+ * Redis reads and writes are retried with exponential backoff on transient
+ * errors (issue #1464). If Redis is still unavailable after the retry budget,
+ * the request proceeds without idempotency (fail-safe, unchanged).
  */
 export async function idempotencyMiddleware(req, res, next) {
   // Only process POST requests as per requirements
@@ -84,7 +92,7 @@ export async function idempotencyMiddleware(req, res, next) {
   req.idempotency = { key: idempotencyKey, payloadHash };
 
   try {
-    const cachedValue = await redisClient.get(redisKey);
+    const cachedValue = await withIdempotencyRetry("get", () => redisClient.get(redisKey));
 
     if (cachedValue) {
       const { hash, response } = JSON.parse(cachedValue);
@@ -106,15 +114,15 @@ export async function idempotencyMiddleware(req, res, next) {
     res.json = function (data) {
       // Only cache successful creation-like responses (2xx)
       if (res.statusCode >= 200 && res.statusCode < 300) {
-        redisClient
-          .set(
-            redisKey,
-            JSON.stringify({
-              hash: payloadHash,
-              response: data,
-            }),
-            { EX: IDEMPOTENCY_TTL_SECONDS }
-          )
+        const cacheEntry = JSON.stringify({
+          hash: payloadHash,
+          response: data,
+        });
+        // Fire-and-forget: retries happen in the background and never delay
+        // the response that is being sent.
+        withIdempotencyRetry("set", () =>
+          redisClient.set(redisKey, cacheEntry, { EX: IDEMPOTENCY_TTL_SECONDS })
+        )
           .catch((err) => {
             console.error("Failed to cache idempotency response:", err.message);
           });

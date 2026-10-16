@@ -49,6 +49,7 @@ import { versionDeprecationMiddleware } from "./lib/version-deprecation.js";
 import oracleRouter from "./routes/oracle.js";
 import { getPaymentSessionValidatorHealth } from "./lib/payment-session-validator.js";
 import { getExchangeRateOracleHealth } from "./lib/exchange-rate-oracle-telemetry.js";
+import { getSep0001Health } from "./lib/sep0001-telemetry.js";
 import { configureExchangeRateCoordination } from "./services/exchangeRateService.js";
 
 export async function createApp({ redisClient }) {
@@ -262,6 +263,7 @@ export async function createApp({ redisClient }) {
         // Informational only — does not affect `ok` / the status code.
         payment_session_validator: getPaymentSessionValidatorHealth().status,
         exchange_rate_oracle_cache: getExchangeRateOracleHealth().status,
+        sep0001_generator: getSep0001Health().status,
       },
     });
   });
@@ -311,6 +313,30 @@ export async function createApp({ redisClient }) {
    */
   app.get("/health/exchange-rate-oracle-cache", (_req, res) => {
     const health = getExchangeRateOracleHealth();
+    res.status(health.status === "unhealthy" ? 503 : 200).json(health);
+  });
+
+  /**
+   * @swagger
+   * /health/sep0001:
+   *   get:
+   *     summary: SEP-0001 stellar.toml generator health telemetry
+   *     description: >
+   *       Rolling-window request counts, server error ratio and derived status
+   *       for GET /.well-known/stellar.toml (issue #1458). Returns 503 only
+   *       when the generator is unhealthy. A degraded status (elevated error
+   *       ratio, or a secret seed refused as SIGNING_KEY) still returns 200.
+   *       The body contains no merchant ids or key material.
+   *     tags: [Health]
+   *     security: []
+   *     responses:
+   *       200:
+   *         description: Generator healthy or degraded
+   *       503:
+   *         description: Generator unhealthy
+   */
+  app.get("/health/sep0001", (_req, res) => {
+    const health = getSep0001Health();
     res.status(health.status === "unhealthy" ? 503 : 200).json(health);
   });
 
