@@ -8,6 +8,7 @@ import { logger } from "./lib/logger.js";
 import { isHorizonReachable } from "./lib/stellar.js";
 import cron from "node-cron";
 import { archiveOldPaymentIntents } from "./lib/maintenance.js";
+import { runLogRetentionPurge } from "./lib/log-retention.js";
 import { startHorizonPoller, stopHorizonPoller } from "./lib/horizon-poller.js";
 import {
   startTransactionSignerTimers,
@@ -97,11 +98,33 @@ async function startServer() {
     });
   });
 
+  // Optional in-process webhook log purge (issues #1473-#1475). Off unless
+  // LOG_RETENTION_PURGE_CRON is set. Safe on every instance: the purge takes
+  // a Postgres advisory lock, so only one instance purges per schedule tick.
+  let logRetentionJob = null;
+  const logRetentionCron = process.env.LOG_RETENTION_PURGE_CRON;
+  if (logRetentionCron) {
+    if (cron.validate(logRetentionCron)) {
+      logRetentionJob = cron.schedule(logRetentionCron, () => {
+        runLogRetentionPurge({ pool }).catch((err) => {
+          logger.error({ err: err?.message }, "Scheduled log retention purge failed");
+        });
+      });
+      logger.info({ schedule: logRetentionCron }, "Log retention purge scheduled");
+    } else {
+      logger.error(
+        { schedule: logRetentionCron },
+        "Invalid LOG_RETENTION_PURGE_CRON; log retention purge not scheduled",
+      );
+    }
+  }
+
   function shutdown(signal) {
     logger.info({ signal }, "shutdown signal received");
     if (stopPoolMonitoring) stopPoolMonitoring();
     stopHorizonPoller();
     maintenanceJob.stop();
+    if (logRetentionJob) logRetentionJob.stop();
     // Release all Transaction Signer in-memory state and stop prune timers so
     // the ReplayCache and VerificationMemoryCache Maps are eligible for GC
     // before the process exits (ML-03/ML-04/ML-05).

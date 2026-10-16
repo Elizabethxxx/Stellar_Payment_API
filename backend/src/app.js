@@ -49,6 +49,7 @@ import { versionDeprecationMiddleware } from "./lib/version-deprecation.js";
 import oracleRouter from "./routes/oracle.js";
 import { getPaymentSessionValidatorHealth } from "./lib/payment-session-validator.js";
 import { getExchangeRateOracleHealth } from "./lib/exchange-rate-oracle-telemetry.js";
+import { getLogRetentionHealth } from "./lib/log-retention-telemetry.js";
 import { configureExchangeRateCoordination } from "./services/exchangeRateService.js";
 
 export async function createApp({ redisClient }) {
@@ -262,6 +263,7 @@ export async function createApp({ redisClient }) {
         // Informational only — does not affect `ok` / the status code.
         payment_session_validator: getPaymentSessionValidatorHealth().status,
         exchange_rate_oracle_cache: getExchangeRateOracleHealth().status,
+        log_retention: getLogRetentionHealth().status,
       },
     });
   });
@@ -311,6 +313,31 @@ export async function createApp({ redisClient }) {
    */
   app.get("/health/exchange-rate-oracle-cache", (_req, res) => {
     const health = getExchangeRateOracleHealth();
+    res.status(health.status === "unhealthy" ? 503 : 200).json(health);
+  });
+
+  /**
+   * @swagger
+   * /health/log-retention:
+   *   get:
+   *     summary: Log Retention & Archival Service health telemetry
+   *     description: >
+   *       Run history and derived status for the webhook delivery log purge
+   *       in this process (issue #1473): last run / last success times,
+   *       consecutive failures, duration budget overruns and whether a run is
+   *       in progress. Returns 503 only when unhealthy (repeated failures or
+   *       no success within the staleness limit). "idle" means no purge has
+   *       run in this process. The body contains no log contents or ids.
+   *     tags: [Health]
+   *     security: []
+   *     responses:
+   *       200:
+   *         description: Purge healthy, degraded or idle
+   *       503:
+   *         description: Purge unhealthy
+   */
+  app.get("/health/log-retention", (_req, res) => {
+    const health = getLogRetentionHealth();
     res.status(health.status === "unhealthy" ? 503 : 200).json(health);
   });
 
