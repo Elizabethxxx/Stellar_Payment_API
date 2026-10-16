@@ -1,0 +1,83 @@
+# Prometheus alerting rules for the WebSocket Relay Service (issue #1453).
+#
+# Load with:   rule_files: ["docs/alerts/websocket-relay.rules.yml"]
+# Validate:    promtool check rules docs/alerts/websocket-relay.rules.yml
+#
+# Metric reference: docs/WEBSOCKET_RELAY.md
+
+groups:
+  - name: websocket-relay
+    rules:
+      - alert: WebSocketRelayUnhealthy
+        expr: max(websocket_relay_health_state) >= 2
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: WebSocket relay reports unhealthy
+          description: >
+            The circuit breaker is open, the delivery failure ratio is above
+            threshold, or the dead letter queue has a large backlog. See
+            GET /health/websocket-relay for the reasons.
+
+      - alert: WebSocketRelayCircuitOpen
+        expr: max(websocket_relay_circuit_open) >= 1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: WebSocket relay circuit breaker is open
+          description: >
+            Deliveries are being rejected without being attempted and go
+            straight to the dead letter queue.
+
+      - alert: WebSocketRelayHighFailureRatio
+        expr: |
+          sum(rate(websocket_relay_deliveries_total{outcome=~"failed|dead_lettered"}[10m]))
+            /
+          clamp_min(sum(rate(websocket_relay_deliveries_total[10m])), 1e-9)
+            > 0.1
+          and sum(increase(websocket_relay_deliveries_total[10m])) >= 20
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: More than 10% of WebSocket relay deliveries are failing
+          description: >
+            Check logs for "WebSocket relay operation failed after exhausting
+            retries".
+
+      - alert: WebSocketRelayRetriesExhausted
+        expr: sum(increase(websocket_relay_retries_total{result="exhausted"}[10m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: WebSocket relay retries are being exhausted
+          description: >
+            Transient failures are lasting longer than the retry budget
+            (RELAY_RETRY_MAX_ATTEMPTS / RELAY_RETRY_MAX_ELAPSED_MS).
+
+      - alert: WebSocketRelayDeadLetterBacklog
+        expr: max(websocket_relay_dlq_depth) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: WebSocket relay dead letter queue is not draining
+          description: >
+            Messages have been waiting in the DLQ for 15 minutes. Run
+            redriveDeadLetters() once the downstream recovers.
+
+      - alert: WebSocketRelayNoDeliveries
+        expr: |
+          time() - max(websocket_relay_last_delivery_timestamp_seconds) > 1800
+          and sum(increase(websocket_relay_deliveries_total[30m])) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: WebSocket relay has attempted deliveries but none succeeded for 30 minutes
+          description: >
+            Deliveries are being attempted but none succeed. Check the
+            relay_errors_total breakdown and the circuit breaker state.

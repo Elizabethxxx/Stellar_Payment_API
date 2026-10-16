@@ -49,6 +49,7 @@ import { versionDeprecationMiddleware } from "./lib/version-deprecation.js";
 import oracleRouter from "./routes/oracle.js";
 import { getPaymentSessionValidatorHealth } from "./lib/payment-session-validator.js";
 import { getExchangeRateOracleHealth } from "./lib/exchange-rate-oracle-telemetry.js";
+import { getWebSocketRelayHealth } from "./lib/websocket-relay-telemetry.js";
 import { configureExchangeRateCoordination } from "./services/exchangeRateService.js";
 
 export async function createApp({ redisClient }) {
@@ -262,6 +263,7 @@ export async function createApp({ redisClient }) {
         // Informational only — does not affect `ok` / the status code.
         payment_session_validator: getPaymentSessionValidatorHealth().status,
         exchange_rate_oracle_cache: getExchangeRateOracleHealth().status,
+        websocket_relay: getWebSocketRelayHealth().status,
       },
     });
   });
@@ -311,6 +313,31 @@ export async function createApp({ redisClient }) {
    */
   app.get("/health/exchange-rate-oracle-cache", (_req, res) => {
     const health = getExchangeRateOracleHealth();
+    res.status(health.status === "unhealthy" ? 503 : 200).json(health);
+  });
+
+  /**
+   * @swagger
+   * /health/websocket-relay:
+   *   get:
+   *     summary: WebSocket Relay Service health telemetry
+   *     description: >
+   *       Rolling-window delivery counts, failure ratio, retry exhaustion,
+   *       circuit breaker state and dead letter queue depth for the WebSocket
+   *       relay (issue #1453). Returns 503 only when the relay is unhealthy
+   *       (circuit open, failure ratio above threshold or a large DLQ
+   *       backlog). A degraded status still returns 200. The body contains
+   *       no message payloads or payment ids.
+   *     tags: [Health]
+   *     security: []
+   *     responses:
+   *       200:
+   *         description: Relay healthy or degraded
+   *       503:
+   *         description: Relay unhealthy
+   */
+  app.get("/health/websocket-relay", (_req, res) => {
+    const health = getWebSocketRelayHealth();
     res.status(health.status === "unhealthy" ? 503 : 200).json(health);
   });
 

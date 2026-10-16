@@ -40,6 +40,7 @@ import {
   paymentProcessorStatusCacheMisses,
   paymentProcessorRefundsTotal,
   paymentProcessorListRequestsTotal,
+  toAssetLabel,
 } from "../lib/payment-processor-metrics.js";
 
 const SAFE_METADATA_KEY_RE = /^[a-zA-Z0-9_-]{1,64}$/;
@@ -458,9 +459,11 @@ export const paymentService = {
   async createPaymentSession(merchant, body) {
     const sessionStart = Date.now();
     const recordSessionOutcome = (outcome) => {
-      paymentProcessorSessionsTotal.inc({ asset: body?.asset, outcome });
+      // body.asset is client input; bound it before using it as a label (#1481).
+      const asset = toAssetLabel(body?.asset);
+      paymentProcessorSessionsTotal.inc({ asset, outcome });
       paymentProcessorSessionDuration.observe(
-        { asset: body?.asset, outcome },
+        { asset, outcome },
         (Date.now() - sessionStart) / 1000,
       );
     };
@@ -756,9 +759,9 @@ export const paymentService = {
     // Record metrics
     paymentConfirmedCounter.inc({ asset: data.asset });
     paymentConfirmationLatency.observe({ asset: data.asset }, latencySeconds);
-    paymentProcessorVerificationsTotal.inc({ asset: data.asset, outcome: "confirmed" });
+    paymentProcessorVerificationsTotal.inc({ asset: toAssetLabel(data.asset), outcome: "confirmed" });
     paymentProcessorVerificationDuration.observe(
-      { asset: data.asset, outcome: "confirmed" },
+      { asset: toAssetLabel(data.asset), outcome: "confirmed" },
       (Date.now() - verifyStart) / 1000,
     );
 
