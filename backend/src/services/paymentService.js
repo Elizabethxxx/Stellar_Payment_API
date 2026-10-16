@@ -31,16 +31,16 @@ import { logger } from "../lib/logger.js";
 import { validatePaymentSession } from "../lib/payment-session-validator.js";
 import { getSupabaseClient } from "../lib/supabase-client.js";
 import { insertPaymentSessionWithRetry } from "../lib/payment-session-retry.js";
+// Payment Processor Telemetry: sanitised, validated recorders (issue #1477)
+// and retried idempotent reads (#1479).
 import {
-  paymentProcessorSessionsTotal,
-  paymentProcessorSessionDuration,
-  paymentProcessorVerificationsTotal,
-  paymentProcessorVerificationDuration,
-  paymentProcessorStatusCacheHits,
-  paymentProcessorStatusCacheMisses,
-  paymentProcessorRefundsTotal,
-  paymentProcessorListRequestsTotal,
-} from "../lib/payment-processor-metrics.js";
+  recordSessionTelemetry,
+  recordVerificationTelemetry,
+  recordStatusCacheTelemetry,
+  recordRefundTelemetry,
+  recordListRequestTelemetry,
+} from "../lib/payment-processor-telemetry.js";
+import { retryProcessorRead } from "../lib/payment-processor-retry.js";
 
 const SAFE_METADATA_KEY_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
@@ -458,11 +458,7 @@ export const paymentService = {
   async createPaymentSession(merchant, body) {
     const sessionStart = Date.now();
     const recordSessionOutcome = (outcome) => {
-      paymentProcessorSessionsTotal.inc({ asset: body?.asset, outcome });
-      paymentProcessorSessionDuration.observe(
-        { asset: body?.asset, outcome },
-        (Date.now() - sessionStart) / 1000,
-      );
+      recordSessionTelemetry({ asset: body?.asset, outcome, durationSeconds: (Date.now() - sessionStart) / 1000 });
     };
     const supabase = await getSupabaseClient();
 
@@ -580,25 +576,25 @@ export const paymentService = {
     const redis = await connectRedisClient();
     const cached = await getCachedPayment(redis, paymentId, merchantId);
     if (cached) {
-      paymentProcessorStatusCacheHits.inc();
+      recordStatusCacheTelemetry(true);
       return { payment: cached };
     }
-    paymentProcessorStatusCacheMisses.inc();
+    recordStatusCacheTelemetry(false);
 
-    let query = supabase
-      .from("payments")
-      .select(
-        "id, amount, asset, asset_issuer, recipient, description, memo, memo_type, status, tx_id, metadata, created_at, merchants(branding_config)"
-      );
+    // Fresh query per attempt; transient read failures retried (issue #1479).
+    const { data, error } = await retryProcessorRead("status_lookup", () => {
+      let query = supabase
+        .from("payments")
+        .select(
+          "id, amount, asset, asset_issuer, recipient, description, memo, memo_type, status, tx_id, metadata, created_at, merchants(branding_config)"
+        );
 
-    if (merchantId) {
-      query = query.eq("merchant_id", merchantId);
-    }
+      if (merchantId) {
+        query = query.eq("merchant_id", merchantId);
+      }
 
-    const { data, error } = await query
-      .eq("id", paymentId)
-      .is("deleted_at", null)
-      .maybeSingle();
+      return query.eq("id", paymentId).is("deleted_at", null).maybeSingle();
+    });
 
     if (error) {
       error.status = 500;
@@ -630,27 +626,23 @@ export const paymentService = {
   async verifyPayment(paymentId, merchantId = null, io = null) {
     const verifyStart = Date.now();
     const recordVerificationOutcome = (outcome) => {
-      paymentProcessorVerificationsTotal.inc({ asset: "unknown", outcome });
-      paymentProcessorVerificationDuration.observe(
-        { asset: "unknown", outcome },
-        (Date.now() - verifyStart) / 1000,
-      );
+      recordVerificationTelemetry({ asset: "unknown", outcome, durationSeconds: (Date.now() - verifyStart) / 1000 });
     };
     const supabase = await getSupabaseClient();
-    let query = supabase
-      .from("payments")
-      .select(
-        "id, merchant_id, amount, asset, asset_issuer, recipient, status, tx_id, memo, memo_type, webhook_url, created_at, merchants(webhook_secret, webhook_version, notification_email, email)"
-      );
+    // Fresh query per attempt; transient read failures retried (issue #1479).
+    const { data, error } = await retryProcessorRead("verify_lookup", () => {
+      let query = supabase
+        .from("payments")
+        .select(
+          "id, merchant_id, amount, asset, asset_issuer, recipient, status, tx_id, memo, memo_type, webhook_url, created_at, merchants(webhook_secret, webhook_version, notification_email, email)"
+        );
 
-    if (merchantId) {
-      query = query.eq("merchant_id", merchantId);
-    }
+      if (merchantId) {
+        query = query.eq("merchant_id", merchantId);
+      }
 
-    const { data, error } = await query
-      .eq("id", paymentId)
-      .is("deleted_at", null)
-      .maybeSingle();
+      return query.eq("id", paymentId).is("deleted_at", null).maybeSingle();
+    });
 
     if (error) {
       error.status = 500;
@@ -756,11 +748,7 @@ export const paymentService = {
     // Record metrics
     paymentConfirmedCounter.inc({ asset: data.asset });
     paymentConfirmationLatency.observe({ asset: data.asset }, latencySeconds);
-    paymentProcessorVerificationsTotal.inc({ asset: data.asset, outcome: "confirmed" });
-    paymentProcessorVerificationDuration.observe(
-      { asset: data.asset, outcome: "confirmed" },
-      (Date.now() - verifyStart) / 1000,
-    );
+    recordVerificationTelemetry({ asset: data.asset, outcome: "confirmed", durationSeconds: (Date.now() - verifyStart) / 1000 });
 
     if (io && data.merchant_id) {
       io.to(`merchant:${data.merchant_id}`).emit("payment:confirmed", {
@@ -828,10 +816,10 @@ export const paymentService = {
 
     try {
       const result = await getMerchantPaymentsViaPool(merchantId, queryParams, page, limit, offset);
-      paymentProcessorListRequestsTotal.inc({ outcome: "success" });
+      recordListRequestTelemetry({ outcome: "success" });
       return result;
     } catch {
-      paymentProcessorListRequestsTotal.inc({ outcome: "pool_fallback" });
+      recordListRequestTelemetry({ outcome: "pool_fallback" });
       return getMerchantPaymentsViaSupabase(merchantId, queryParams, page, limit, offset);
     }
   },
@@ -865,14 +853,14 @@ export const paymentService = {
     }
 
     if (payment.status !== "confirmed") {
-      paymentProcessorRefundsTotal.inc({ stage: "generate", outcome: "rejected" });
+      recordRefundTelemetry({ stage: "generate", outcome: "rejected" });
       const err = new Error("Only confirmed payments can be refunded");
       err.status = 400;
       throw err;
     }
 
     if (payment.metadata?.refund_status === "refunded") {
-      paymentProcessorRefundsTotal.inc({ stage: "generate", outcome: "rejected" });
+      recordRefundTelemetry({ stage: "generate", outcome: "rejected" });
       const err = new Error("Payment already refunded");
       err.status = 400;
       throw err;
@@ -918,7 +906,7 @@ export const paymentService = {
       })
       .eq("id", payment.id);
 
-    paymentProcessorRefundsTotal.inc({ stage: "generate", outcome: "success" });
+    recordRefundTelemetry({ stage: "generate", outcome: "success" });
 
     return {
       xdr: refundTx.xdr,
@@ -966,7 +954,7 @@ export const paymentService = {
       // generateRefundTx was never called for this payment (or predates
       // this field) — there is nothing to verify the submitted hash
       // against, so refuse rather than accept it on faith.
-      paymentProcessorRefundsTotal.inc({ stage: "confirm", outcome: "rejected" });
+      recordRefundTelemetry({ stage: "confirm", outcome: "rejected" });
       const err = new Error(
         "No pending refund found for this payment. Call the refund endpoint first.",
       );
@@ -975,7 +963,7 @@ export const paymentService = {
     }
 
     if (txHash.toLowerCase() !== expectedHash.toLowerCase()) {
-      paymentProcessorRefundsTotal.inc({ stage: "confirm", outcome: "rejected" });
+      recordRefundTelemetry({ stage: "confirm", outcome: "rejected" });
       const err = new Error(
         "Transaction hash does not match the refund transaction generated for this payment",
       );
@@ -998,7 +986,7 @@ export const paymentService = {
     try {
       onChainTx = await server.transactions().transaction(txHash).call();
     } catch (horizonErr) {
-      paymentProcessorRefundsTotal.inc({ stage: "confirm", outcome: "not_found" });
+      recordRefundTelemetry({ stage: "confirm", outcome: "not_found" });
       const err = new Error(
         "Transaction not found on Stellar network. Submit it before confirming.",
       );
@@ -1008,7 +996,7 @@ export const paymentService = {
     }
 
     if (!onChainTx.successful) {
-      paymentProcessorRefundsTotal.inc({ stage: "confirm", outcome: "failed_on_chain" });
+      recordRefundTelemetry({ stage: "confirm", outcome: "failed_on_chain" });
       const err = new Error("Refund transaction failed on the Stellar network");
       err.status = 400;
       throw err;
@@ -1026,7 +1014,7 @@ export const paymentService = {
       })
       .eq("id", payment.id);
 
-    paymentProcessorRefundsTotal.inc({ stage: "confirm", outcome: "success" });
+    recordRefundTelemetry({ stage: "confirm", outcome: "success" });
 
     return { message: "Refund confirmed successfully" };
   },

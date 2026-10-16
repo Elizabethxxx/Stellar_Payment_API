@@ -262,6 +262,33 @@ console.log('Accounts:', toml.ACCOUNTS);
 - Wait 1 hour for changes to propagate
 - Clear CDN cache if using a CDN
 
+## Retry with Exponential Backoff (#1459)
+
+The only I/O behind `GET /.well-known/stellar.toml` is the merchant lookup.
+It is retried when it fails transiently (`src/lib/sep0001-retry.js`):
+
+- Retried: network errors, 408/429/5xx, connection-class Postgres errors.
+- Not retried: unknown or invalid merchant ids, PostgREST client errors.
+- Delay: full jitter, `random(0, min(max, base * 2^n))`.
+
+| Variable | Default | Clamp |
+|---|---|---|
+| `SEP0001_RETRY_MAX_ATTEMPTS` | 3 | 1-5 |
+| `SEP0001_RETRY_BASE_DELAY_MS` | 100 | 0-5000 |
+| `SEP0001_RETRY_MAX_DELAY_MS` | 1000 | base-5000 |
+
+If the lookup is still failing transiently after the last attempt, the
+endpoint answers **503** with `Retry-After: 5` instead of 500, so wallets
+retry later instead of treating the domain as having no stellar.toml.
+Deterministic lookup errors still return 500. Every error response carries
+`Cache-Control: no-store`, so a CDN never caches a failure for the hour that
+successful responses are cached.
+
+Retry outcomes are exported as
+`sep0001_merchant_lookup_retries_total{result="scheduled|recovered|exhausted"}`
+on `GET /metrics`. Logs carry the error code, attempt count and message, never
+the merchant record.
+
 ## Security Considerations
 
 1. **Public Information**: stellar.toml is publicly accessible

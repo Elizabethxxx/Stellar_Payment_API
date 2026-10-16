@@ -1,0 +1,82 @@
+# Prometheus alerting rules for Payment Processor Telemetry (issues #1477-#1479).
+#
+# Load with:   rule_files: ["docs/alerts/payment-processor.rules.yml"]
+# Validate:    promtool check rules docs/alerts/payment-processor.rules.yml
+#
+# Metric reference: docs/PAYMENT_PROCESSOR.md (section 6)
+
+groups:
+  - name: payment-processor
+    rules:
+      - alert: PaymentProcessorUnhealthy
+        expr: max(payment_processor_health_state) >= 2
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Payment processor reports unhealthy
+          description: >
+            Session persistence, verification or refund errors are above the
+            unhealthy ratio over the rolling window. See
+            GET /health/payment-processor for the counts and reasons.
+
+      - alert: PaymentProcessorDegraded
+        expr: max(payment_processor_health_state) == 1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Payment processor degraded for 15 minutes
+          description: >
+            An error ratio is above the degraded threshold, telemetry payloads
+            are being rejected, or read retries are being exhausted.
+
+      - alert: PaymentProcessorSessionPersistenceFailures
+        expr: |
+          sum(rate(payment_processor_sessions_total{outcome="persistence_failed"}[10m]))
+            /
+          clamp_min(sum(rate(payment_processor_sessions_total{outcome=~"created|persistence_failed"}[10m])), 1e-9)
+            > 0.05
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: More than 5% of payment sessions fail to persist
+          description: >
+            Session inserts are failing after their own retries. Check
+            database health and the "Payment session operation failed" logs.
+
+      - alert: PaymentProcessorReadRetriesExhausted
+        expr: sum(increase(payment_processor_retries_total{result="exhausted"}[10m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Payment processor reads failed after all retries
+          description: >
+            Status or verification lookups kept failing with transient errors
+            until PAYMENT_PROCESSOR_RETRY_MAX_ATTEMPTS ran out. Customers saw
+            5xx on payment-status or verify-payment.
+
+      - alert: PaymentProcessorTelemetryRejections
+        expr: sum(increase(payment_processor_telemetry_rejected_total[15m])) > 0
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: Payment processor telemetry payloads are being rejected
+          description: >
+            A code path is recording an outcome, stage or duration outside the
+            allow-list. The business series are not affected (rejected
+            payloads are dropped) but the gap hides real traffic. Check the
+            "Payment processor telemetry payload rejected" log for the metric.
+
+      - alert: PaymentProcessorAssetLabelOverflow
+        expr: sum(increase(payment_processor_sessions_total{asset=~"other|invalid"}[1h])) > 100
+        labels:
+          severity: info
+        annotations:
+          summary: Many sessions recorded under asset "other" or "invalid"
+          description: >
+            Either the distinct asset label cap
+            (PAYMENT_PROCESSOR_TELEMETRY_MAX_ASSET_LABELS) is too low for real
+            traffic, or clients are sending malformed asset codes.

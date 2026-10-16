@@ -1,6 +1,14 @@
 import express from "express";
 import { supabase } from "../lib/supabase.js";
 import { generateStellarToml, validateStellarToml } from "../lib/sep0001-generator.js";
+import {
+  fetchMerchantForStellarToml,
+  isTransientSep0001Error,
+} from "../lib/sep0001-retry.js";
+import { logger } from "../lib/logger.js";
+
+/** Seconds a client should wait before retrying after a transient failure. */
+const RETRY_AFTER_SECONDS = 5;
 
 const router = express.Router();
 
@@ -28,6 +36,11 @@ const router = express.Router();
  *         description: Merchant not found
  *       500:
  *         description: Failed to generate stellar.toml
+ *       503:
+ *         description: >
+ *           Merchant lookup kept failing with a transient error after
+ *           automatic retries with exponential backoff (issue #1459).
+ *           Includes a Retry-After header; never cached.
  */
 router.get("/.well-known/stellar.toml", async (req, res, next) => {
   try {
@@ -42,16 +55,22 @@ router.get("/.well-known/stellar.toml", async (req, res, next) => {
       return res.status(400).json({ error: "merchant_id required" });
     }
 
-    // Fetch merchant data
-    const { data: merchant, error } = await supabase
-      .from("merchants")
-      .select("id, business_name, email, notification_email, recipient, branding_config")
-      .eq("id", merchantId)
-      .is("deleted_at", null)
-      .maybeSingle();
+    // Fetch merchant data, retrying transient failures with exponential
+    // backoff (issue #1459). Deterministic errors come back on the first try.
+    const { data: merchant, error } = await fetchMerchantForStellarToml(supabase, merchantId);
 
     if (error) {
-      console.error("Failed to fetch merchant:", error);
+      const transient = isTransientSep0001Error(error);
+      logger.error(
+        { code: error.code, attempts: error.retryAttempts ?? 1, transient, err: error.message },
+        "SEP-0001: failed to fetch merchant",
+      );
+      // Error responses must never be cached by wallets or CDNs.
+      res.set("Cache-Control", "no-store");
+      if (transient) {
+        res.set("Retry-After", String(RETRY_AFTER_SECONDS));
+        return res.status(503).json({ error: "Merchant lookup temporarily unavailable" });
+      }
       return res.status(500).json({ error: "Failed to fetch merchant" });
     }
 

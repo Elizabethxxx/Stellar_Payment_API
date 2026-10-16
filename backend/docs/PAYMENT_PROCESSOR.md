@@ -4,7 +4,9 @@ Architecture, granular metrics, and testing guide for the Payment Processor
 module (`src/routes/payments.js` + `src/services/paymentService.js`).
 
 Covers issues **#1086** (end-to-end testing), **#1087** (legacy refactor),
-**#1088** (granular metrics) and **#1089** (load testing).
+**#1088** (granular metrics), **#1089** (load testing), and Payment Processor
+Telemetry: **#1477** (payload sanitization and strict validation), **#1478**
+(alert metrics and health) and **#1479** (retry with exponential backoff).
 
 ---
 
@@ -118,3 +120,105 @@ Include the printed percentile tables in PRs touching the processor.
 - Verification uses a DB-level conditional update so a `tx_hash` can only be
   claimed once even under concurrent confirmation attempts
 - Signature verification failure keeps payments pending (fail-closed)
+
+---
+
+## 6. Payment Processor Telemetry (#1477, #1478, #1479)
+
+| File | Role |
+|---|---|
+| `src/lib/payment-processor-telemetry.js` | Sanitising, validating recorders; rolling-window health; new series |
+| `src/lib/payment-processor-retry.js` | Retried idempotent reads (status / verification lookup) |
+| `src/lib/backoff-retry.js` | Shared full-jitter backoff used by the processor and SEP-0001 |
+| `docs/alerts/payment-processor.rules.yml` | Prometheus alert rules |
+
+### 6.1 Payload sanitization and strict validation (#1477)
+
+`routes/payments.js` and `services/paymentService.js` no longer call the
+`payment_processor_*` metric objects directly. They call the recorders
+(`recordSessionTelemetry`, `recordVerificationTelemetry`,
+`recordRefundTelemetry`, `recordListRequestTelemetry`,
+`recordStatusCacheTelemetry`, `recordProcessorRetryTelemetry`), which:
+
+| Input | Rule | Otherwise |
+|---|---|---|
+| payload | plain object | rejected (`invalid_payload`) |
+| `outcome` / `stage` / `operation` | fixed allow-list per series | rejected (`invalid_outcome` / `invalid_stage` / `invalid_operation`) |
+| `asset` | trimmed, upper-cased, `^[A-Z0-9]{1,12}$`; `native` becomes `XLM` | label `invalid`; missing becomes `unknown` |
+| distinct assets | at most `PAYMENT_PROCESSOR_TELEMETRY_MAX_ASSET_LABELS` (default 50) | label `other` |
+| duration | finite, `0` to `3600` seconds | count still recorded, observation dropped, `invalid_duration` |
+
+Before this, `req.body.asset` went straight into a label, so a client could
+create a new Prometheus series on every request. Rejected payloads are never
+written to the business series; they increment
+`payment_processor_telemetry_rejected_total{metric, reason}` and log one
+warning with the metric and reason only. Recorders never throw.
+
+Allow-lists:
+
+- sessions: created, validation_failed, persistence_failed, sandbox_skipped
+- verifications: confirmed, already_confirmed, already_confirmed_concurrent,
+  pending_no_match, signature_invalid, underpayment, overpayment,
+  tx_claim_conflict, error
+- refunds: stage generate or confirm; outcome success, rejected, not_found,
+  failed_on_chain, error
+- list requests: success, pool_fallback, error
+
+### 6.2 Alert metrics and health (#1478)
+
+| Series | Type | Notes |
+|---|---|---|
+| `payment_processor_health_state` | gauge | 0 healthy, 1 degraded, 2 unhealthy; refreshed at scrape |
+| `payment_processor_session_failure_ratio` | gauge | persistence_failed / (created + persistence_failed) |
+| `payment_processor_verification_error_ratio` | gauge | error / all verifications |
+| `payment_processor_refund_error_ratio` | gauge | (error + failed_on_chain) / all refund operations |
+| `payment_processor_telemetry_rejection_ratio` | gauge | rejected / all telemetry events |
+| `payment_processor_telemetry_rejected_total` | counter | `metric`, `reason` |
+| `payment_processor_retries_total` | counter | `operation`, `result` (see 6.3) |
+
+Health uses a rolling window (`PAYMENT_PROCESSOR_HEALTH_WINDOW_MS`, default
+5 min) and needs `PAYMENT_PROCESSOR_HEALTH_MIN_SAMPLES` (default 20) before a
+ratio counts:
+
+- `unhealthy`: any error ratio >= `PAYMENT_PROCESSOR_UNHEALTHY_ERROR_RATIO` (0.2)
+- `degraded`: any error ratio >= `PAYMENT_PROCESSOR_DEGRADED_ERROR_RATIO`
+  (0.05), telemetry rejections at that ratio, or any exhausted read retry
+- `healthy`: otherwise
+
+Validation failures (bad client input) do not count as processor errors.
+
+`GET /health/payment-processor` returns the snapshot (503 only when
+unhealthy). `GET /health` lists `services.payment_processor` for information
+only. The body holds counts and ratios, never payment ids, amounts, addresses
+or asset codes.
+
+### 6.3 Retry with exponential backoff (#1479)
+
+The first Supabase read of the status poll and of verification
+(`status_lookup`, `verify_lookup`, in both the route and the service) is
+retried with full jitter, `random(0, min(max, base * 2^n))`:
+
+| Variable | Default | Clamp |
+|---|---|---|
+| `PAYMENT_PROCESSOR_RETRY_MAX_ATTEMPTS` | 3 | 1-5 |
+| `PAYMENT_PROCESSOR_RETRY_BASE_DELAY_MS` | 50 | 0-3000 |
+| `PAYMENT_PROCESSOR_RETRY_MAX_DELAY_MS` | 500 | base-3000 |
+
+- Retried: network errors, 408/429/5xx, connection-class Postgres errors
+  (shared `isRetryableSessionError`).
+- Not retried: not-found, invalid ids, missing columns (the status route still
+  falls through its schema-tolerant query shapes), PostgREST client errors.
+- Writes (status transitions, tx claims, refunds) are never wrapped.
+- Each query is rebuilt per attempt (PostgREST builders are single-use).
+- After the last attempt the final `{ data, error }` is returned unchanged, so
+  response codes are as before.
+
+`payment_processor_retries_total{operation, result}` records `scheduled`,
+`recovered` and `exhausted`; exhausted retries also degrade health.
+
+### 6.4 Tests
+
+```bash
+npx vitest run src/lib/payment-processor-telemetry.test.js src/lib/payment-processor-retry.test.js src/lib/backoff-retry.test.js
+npx vitest run tests/integration/payment-processor-telemetry.test.js tests/e2e/payment-processor.e2e.test.js
+```

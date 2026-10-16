@@ -49,15 +49,14 @@ import {
   PAYMENT_SESSION_IN_PROGRESS,
 } from "../lib/payment-session-lock.js";
 import { lookupIdempotentResponse } from "../lib/idempotency.js";
+// Payment Processor Telemetry: every label is sanitised and validated before
+// it reaches Prometheus (issue #1477); reads retry with backoff (#1479).
 import {
-  paymentProcessorSessionsTotal,
-  paymentProcessorSessionDuration,
-  paymentProcessorVerificationsTotal,
-  paymentProcessorVerificationDuration,
-  paymentProcessorStatusCacheHits,
-  paymentProcessorStatusCacheMisses,
-  paymentProcessorRefundsTotal,
-} from "../lib/payment-processor-metrics.js";
+  recordSessionTelemetry,
+  recordVerificationTelemetry,
+  recordStatusCacheTelemetry,
+} from "../lib/payment-processor-telemetry.js";
+import { retryProcessorRead } from "../lib/payment-processor-retry.js";
 import {
   getExchangeRateQuote,
   NoPathFoundError,
@@ -322,11 +321,7 @@ function createPaymentsRouter({
         asset: assetLabel,
         reason: rejection.reason === "issuer_not_allowed" ? "invalid_issuer" : rejection.reason,
       });
-      paymentProcessorSessionsTotal.inc({ asset: assetLabel, outcome: "validation_failed" });
-      paymentProcessorSessionDuration.observe(
-        { asset: assetLabel, outcome: "validation_failed" },
-        (Date.now() - sessionStart) / 1000,
-      );
+      recordSessionTelemetry({ asset: assetLabel, outcome: "validation_failed", durationSeconds: (Date.now() - sessionStart) / 1000 });
       return res.status(400).json({
         error: rejection.message,
         ...(rejection.rule === "limits" ? rejection.details : {}),
@@ -378,22 +373,14 @@ function createPaymentsRouter({
       await insertPaymentSessionWithRetry(supabase, payload);
     } catch (insertError) {
       insertError.status = 500;
-      paymentProcessorSessionsTotal.inc({ asset: body.asset, outcome: "persistence_failed" });
-      paymentProcessorSessionDuration.observe(
-        { asset: body.asset, outcome: "persistence_failed" },
-        (Date.now() - sessionStart) / 1000,
-      );
+      recordSessionTelemetry({ asset: body.asset, outcome: "persistence_failed", durationSeconds: (Date.now() - sessionStart) / 1000 });
       throw insertError;
     }
 
     // Only record production metrics for non-sandbox payments.
     if (!isSandbox) {
       paymentCreatedCounter.inc({ asset: body.asset });
-      paymentProcessorSessionsTotal.inc({ asset: body.asset, outcome: "created" });
-      paymentProcessorSessionDuration.observe(
-        { asset: body.asset, outcome: "created" },
-        (Date.now() - sessionStart) / 1000,
-      );
+      recordSessionTelemetry({ asset: body.asset, outcome: "created", durationSeconds: (Date.now() - sessionStart) / 1000 });
     }
 
     logger.info({ paymentId: paymentId }, "DEBUG: createSession success");
@@ -453,10 +440,10 @@ function createPaymentsRouter({
         const redis = await connectRedisClient();
         const cached = await getCachedPayment(redis, req.params.id, req.merchant?.id);
         if (cached) {
-          paymentProcessorStatusCacheHits.inc();
+          recordStatusCacheTelemetry(true);
           return res.json({ payment: cached });
         }
-        paymentProcessorStatusCacheMisses.inc();
+        recordStatusCacheTelemetry(false);
 
         const baseFields =
           "id, merchant_id, amount, asset, asset_issuer, recipient, description, memo, memo_type, status, tx_id, metadata, created_at";
@@ -496,7 +483,9 @@ function createPaymentsRouter({
         let queryError = null;
         let usedJoin = false;
         for (const attempt of attempts) {
-          const result = await runPaymentQuery(attempt);
+          // Transient read failures are retried with backoff before falling
+          // back to the next schema shape (issue #1479).
+          const result = await retryProcessorRead("status_lookup", () => runPaymentQuery(attempt));
           if (!result.error) {
             data = result.data;
             usedJoin = result.includeJoin;
@@ -611,29 +600,27 @@ function createPaymentsRouter({
       const recordVerificationOutcome = (outcome, asset) => {
         if (verifyOutcomeRecorded) return;
         verifyOutcomeRecorded = true;
-        paymentProcessorVerificationsTotal.inc({ asset: asset || "unknown", outcome });
-        paymentProcessorVerificationDuration.observe(
-          { asset: asset || "unknown", outcome },
-          (Date.now() - verifyStart) / 1000,
-        );
+        recordVerificationTelemetry({ asset: asset || "unknown", outcome, durationSeconds: (Date.now() - verifyStart) / 1000 });
       };
       try {
         const supabase = await getSupabaseClient();
-        let query = supabase
-          .from("payments")
-          .select(
-            "id, merchant_id, amount, asset, asset_issuer, recipient, status, tx_id, memo, memo_type, webhook_url, metadata, created_at, merchants(webhook_secret, webhook_version, webhook_custom_headers, notification_email, email, business_name, subscribed_events)"
-          );
+        // A fresh query per attempt: PostgREST builders are single-use. The
+        // lookup is a read, so transient failures are retried (issue #1479).
+        const buildVerifyQuery = () => {
+          let query = supabase
+            .from("payments")
+            .select(
+              "id, merchant_id, amount, asset, asset_issuer, recipient, status, tx_id, memo, memo_type, webhook_url, metadata, created_at, merchants(webhook_secret, webhook_version, webhook_custom_headers, notification_email, email, business_name, subscribed_events)"
+            );
 
-        if (req.merchant?.id) {
-          query = query.eq("merchant_id", req.merchant.id);
-        }
+          if (req.merchant?.id) {
+            query = query.eq("merchant_id", req.merchant.id);
+          }
 
-        const { data, error } = await query
+          return query.eq("id", req.params.id).is("deleted_at", null).maybeSingle();
+        };
 
-          .eq("id", req.params.id)
-          .is("deleted_at", null)
-          .maybeSingle();
+        const { data, error } = await retryProcessorRead("verify_lookup", buildVerifyQuery);
 
         console.log("DEBUG: Supabase query finished. data exists:", !!data, "error:", !!error);
 

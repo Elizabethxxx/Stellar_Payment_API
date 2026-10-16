@@ -49,6 +49,7 @@ import { versionDeprecationMiddleware } from "./lib/version-deprecation.js";
 import oracleRouter from "./routes/oracle.js";
 import { getPaymentSessionValidatorHealth } from "./lib/payment-session-validator.js";
 import { getExchangeRateOracleHealth } from "./lib/exchange-rate-oracle-telemetry.js";
+import { getPaymentProcessorHealth } from "./lib/payment-processor-telemetry.js";
 import { configureExchangeRateCoordination } from "./services/exchangeRateService.js";
 
 export async function createApp({ redisClient }) {
@@ -262,6 +263,7 @@ export async function createApp({ redisClient }) {
         // Informational only — does not affect `ok` / the status code.
         payment_session_validator: getPaymentSessionValidatorHealth().status,
         exchange_rate_oracle_cache: getExchangeRateOracleHealth().status,
+        payment_processor: getPaymentProcessorHealth().status,
       },
     });
   });
@@ -311,6 +313,31 @@ export async function createApp({ redisClient }) {
    */
   app.get("/health/exchange-rate-oracle-cache", (_req, res) => {
     const health = getExchangeRateOracleHealth();
+    res.status(health.status === "unhealthy" ? 503 : 200).json(health);
+  });
+
+  /**
+   * @swagger
+   * /health/payment-processor:
+   *   get:
+   *     summary: Payment Processor telemetry health
+   *     description: >
+   *       Rolling-window session, verification and refund outcome counts,
+   *       error ratios, telemetry rejections and exhausted read retries for
+   *       the payment processor (issue #1478). Returns 503 only when
+   *       unhealthy (an error ratio above the unhealthy threshold); degraded
+   *       still returns 200. The body contains no payment ids, amounts,
+   *       addresses or asset codes.
+   *     tags: [Health]
+   *     security: []
+   *     responses:
+   *       200:
+   *         description: Processor healthy or degraded
+   *       503:
+   *         description: Processor unhealthy
+   */
+  app.get("/health/payment-processor", (_req, res) => {
+    const health = getPaymentProcessorHealth();
     res.status(health.status === "unhealthy" ? 503 : 200).json(health);
   });
 
