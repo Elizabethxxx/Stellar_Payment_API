@@ -75,6 +75,16 @@ vi.mock("recharts", () => ({
   },
 }));
 
+// ─── Mock sonner ─────────────────────────────────────────────────────────────
+const mockToast = {
+  success: vi.fn(),
+  error: vi.fn(),
+};
+vi.mock("sonner", () => ({
+  toast: mockToast,
+  Toaster: () => <div data-testid="toaster" />,
+}));
+
 // ─── Mock next-intl ───────────────────────────────────────────────────────────
 let mockLocale = "en";
 vi.mock("next-intl", () => ({
@@ -337,7 +347,151 @@ describe("ApiUsageChart Component", () => {
     });
   });
 
-  // ── 6. Snapshot Tests ──────────────────────────────────────────────────────
+  // ── 6. WCAG 2.1 AA Accessibility & Screen Reader Support ──────────────────
+  describe("WCAG 2.1 AA Accessibility & Screen Reader Support (#1656)", () => {
+    it("renders chart region landmark with accessible name and keyboard focusability", async () => {
+      render(<ApiUsageChart />);
+
+      await waitFor(() => {
+        expect(screen.getByRole("region", { name: "API Usage Statistics" })).toBeInTheDocument();
+      });
+
+      const region = screen.getByRole("region", { name: "API Usage Statistics" });
+      expect(region).toHaveAttribute("tabindex", "0");
+      expect(region.className).toContain("focus-visible:ring-2");
+    });
+
+    it("renders screen-reader accessible table summarizing daily volume", async () => {
+      render(<ApiUsageChart />);
+
+      await waitFor(() => {
+        expect(screen.getByRole("table", { name: "Daily API request volume breakdown" })).toBeInTheDocument();
+      });
+
+      expect(screen.getByText("Daily API request volume for the last 7 days")).toBeInTheDocument();
+      expect(screen.getByText("120 requests")).toBeInTheDocument();
+      expect(screen.getByText("620 requests")).toBeInTheDocument();
+    });
+
+    it("includes aria-live='polite' region for dynamic summary updates", async () => {
+      render(<ApiUsageChart />);
+
+      await waitFor(() => {
+        const liveRegion = screen.getByText(/Total requests: 2,000/i);
+        expect(liveRegion).toHaveAttribute("aria-live", "polite");
+      });
+    });
+  });
+
+  // ── 7. Responsive Drawer View & Touch Gestures ──────────────────────────────
+  describe("Responsive Drawer View & Touch Gestures (#1657)", () => {
+    it("renders drawer toggle button on mobile viewport and toggles drawer dialog", async () => {
+      setViewport(375);
+      render(<ApiUsageChart />);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Open detailed usage breakdown drawer" })).toBeInTheDocument();
+      });
+
+      const openBtn = screen.getByRole("button", { name: "Open detailed usage breakdown drawer" });
+      expect(screen.queryByRole("dialog", { name: "API Usage Details Drawer" })).not.toBeInTheDocument();
+
+      fireEvent.click(openBtn);
+
+      expect(screen.getByRole("dialog", { name: "API Usage Details Drawer" })).toBeInTheDocument();
+      expect(screen.getByText("Usage Breakdown")).toBeInTheDocument();
+
+      // Close via close button
+      const closeBtn = screen.getByRole("button", { name: "Close API usage details drawer" });
+      fireEvent.click(closeBtn);
+
+      expect(screen.queryByRole("dialog", { name: "API Usage Details Drawer" })).not.toBeInTheDocument();
+    });
+
+    it("dismisses drawer upon swipe-down touch gesture", async () => {
+      setViewport(375);
+      render(<ApiUsageChart />);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Open detailed usage breakdown drawer" })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Open detailed usage breakdown drawer" }));
+      expect(screen.getByRole("dialog", { name: "API Usage Details Drawer" })).toBeInTheDocument();
+
+      const drawer = screen.getByRole("dialog").querySelector("#api-usage-drawer");
+      expect(drawer).not.toBeNull();
+
+      // Simulate swipe down gesture: touchStart at y=100, touchMove to y=200, touchEnd
+      fireEvent.touchStart(drawer!, { touches: [{ clientY: 100 }] });
+      fireEvent.touchMove(drawer!, { touches: [{ clientY: 200 }] });
+      fireEvent.touchEnd(drawer!);
+
+      expect(screen.queryByRole("dialog", { name: "API Usage Details Drawer" })).not.toBeInTheDocument();
+    });
+
+    it("closes drawer when Escape key is pressed", async () => {
+      setViewport(375);
+      render(<ApiUsageChart />);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Open detailed usage breakdown drawer" })).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByRole("button", { name: "Open detailed usage breakdown drawer" }));
+      expect(screen.getByRole("dialog", { name: "API Usage Details Drawer" })).toBeInTheDocument();
+
+      fireEvent.keyDown(window, { key: "Escape" });
+      expect(screen.queryByRole("dialog", { name: "API Usage Details Drawer" })).not.toBeInTheDocument();
+    });
+  });
+
+  // ── 8. Optimistic State Rollback & Toast Feedback ───────────────────────────
+  describe("Optimistic State Rollback & Toast Feedback (#1658)", () => {
+    it("handles optimistic refresh and triggers success toast on API resolution", async () => {
+      render(<ApiUsageChart />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Total requests: 2,000")).toBeInTheDocument();
+      });
+
+      const refreshBtn = screen.getByRole("button", { name: "Refresh API usage statistics" });
+      fireEvent.click(refreshBtn);
+
+      await waitFor(() => {
+        expect(mockToast.success).toHaveBeenCalledWith("API usage data updated");
+      });
+    });
+
+    it("performs optimistic rollback and emits error toast upon network failure", async () => {
+      render(<ApiUsageChart />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Total requests: 2,000")).toBeInTheDocument();
+      });
+
+      // Second fetch fails
+      (globalThis.fetch as any).mockRejectedValueOnce(new Error("Connection reset by peer"));
+
+      const refreshBtn = screen.getByRole("button", { name: "Refresh API usage statistics" });
+      fireEvent.click(refreshBtn);
+
+      await waitFor(() => {
+        expect(mockToast.error).toHaveBeenCalledWith(
+          "Failed to update API usage data",
+          expect.objectContaining({
+            description: "Network error occurred. Previous data has been restored.",
+            action: expect.objectContaining({ label: "Retry" }),
+          }),
+        );
+      });
+
+      // Assert data rolled back to original 2,000 requests
+      expect(screen.getByText("Total requests: 2,000")).toBeInTheDocument();
+    });
+  });
+
+  // ── 9. Snapshot Tests ──────────────────────────────────────────────────────
   describe("Snapshot Tests", () => {
     it("matches snapshot when unauthenticated", () => {
       mockApiKey = null;

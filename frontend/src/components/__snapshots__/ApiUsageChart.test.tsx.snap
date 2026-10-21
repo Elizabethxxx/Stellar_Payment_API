@@ -19,7 +19,10 @@ exports[`ApiUsageChart Component > Snapshot Tests > matches snapshot during load
 exports[`ApiUsageChart Component > Snapshot Tests > matches snapshot on desktop populated state 1`] = `
 <div>
   <div
-    class="min-w-0 rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6"
+    aria-label="API Usage Statistics"
+    class="min-w-0 rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 outline-none focus-visible:ring-2 focus-visible:ring-mint focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0A0A]"
+    role="region"
+    tabindex="0"
   >
     <div
       class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
@@ -27,16 +30,139 @@ exports[`ApiUsageChart Component > Snapshot Tests > matches snapshot on desktop 
       <div>
         <h3
           class="text-lg font-semibold text-white"
+          id="api-usage-heading"
         >
           API Usage - Last 7 Days
         </h3>
         <p
+          aria-live="polite"
           class="text-sm text-slate-400"
         >
           Total requests: 
           2,000
         </p>
       </div>
+      <div
+        class="flex items-center gap-2"
+      >
+        <button
+          aria-label="Refresh API usage statistics"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint disabled:opacity-50"
+          type="button"
+        >
+          <svg
+            aria-hidden="true"
+            class="h-3.5 w-3.5 "
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+          <span>
+            Refresh
+          </span>
+        </button>
+        <button
+          aria-controls="api-usage-drawer"
+          aria-expanded="false"
+          aria-label="Open detailed usage breakdown drawer"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint sm:hidden"
+          type="button"
+        >
+          <span>
+            View Details
+          </span>
+        </button>
+      </div>
+    </div>
+    <div
+      class="sr-only"
+    >
+      <table
+        aria-label="Daily API request volume breakdown"
+      >
+        <caption>
+          Daily API request volume for the last 7 days
+        </caption>
+        <thead>
+          <tr>
+            <th
+              scope="col"
+            >
+              Date
+            </th>
+            <th
+              scope="col"
+            >
+              Requests
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              Oct 15, 2026
+            </td>
+            <td>
+              120 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 16, 2026
+            </td>
+            <td>
+              250 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 17, 2026
+            </td>
+            <td>
+              310 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 18, 2026
+            </td>
+            <td>
+              95 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 19, 2026
+            </td>
+            <td>
+              430 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 20, 2026
+            </td>
+            <td>
+              620 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 21, 2026
+            </td>
+            <td>
+              175 requests
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
     <div
       class="-mx-2 sm:mx-0"
@@ -84,7 +210,10 @@ exports[`ApiUsageChart Component > Snapshot Tests > matches snapshot on desktop 
 exports[`ApiUsageChart Component > Snapshot Tests > matches snapshot on empty data state 1`] = `
 <div>
   <div
-    class="min-w-0 rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6"
+    aria-label="API Usage Statistics"
+    class="min-w-0 rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 outline-none focus-visible:ring-2 focus-visible:ring-mint focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0A0A]"
+    role="region"
+    tabindex="0"
   >
     <div
       class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
@@ -92,15 +221,44 @@ exports[`ApiUsageChart Component > Snapshot Tests > matches snapshot on empty da
       <div>
         <h3
           class="text-lg font-semibold text-white"
+          id="api-usage-heading"
         >
           API Usage - Last 7 Days
         </h3>
         <p
+          aria-live="polite"
           class="text-sm text-slate-400"
         >
           Total requests: 
           0
         </p>
+      </div>
+      <div
+        class="flex items-center gap-2"
+      >
+        <button
+          aria-label="Refresh API usage statistics"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint disabled:opacity-50"
+          type="button"
+        >
+          <svg
+            aria-hidden="true"
+            class="h-3.5 w-3.5 "
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+          <span>
+            Refresh
+          </span>
+        </button>
       </div>
     </div>
     <div
@@ -133,7 +291,10 @@ exports[`ApiUsageChart Component > Snapshot Tests > matches snapshot on error st
 exports[`ApiUsageChart Component > Snapshot Tests > matches snapshot on mobile compact populated state 1`] = `
 <div>
   <div
-    class="min-w-0 rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6"
+    aria-label="API Usage Statistics"
+    class="min-w-0 rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 outline-none focus-visible:ring-2 focus-visible:ring-mint focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0A0A]"
+    role="region"
+    tabindex="0"
   >
     <div
       class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
@@ -141,16 +302,139 @@ exports[`ApiUsageChart Component > Snapshot Tests > matches snapshot on mobile c
       <div>
         <h3
           class="text-lg font-semibold text-white"
+          id="api-usage-heading"
         >
           API Usage - Last 7 Days
         </h3>
         <p
+          aria-live="polite"
           class="text-sm text-slate-400"
         >
           Total requests: 
           2,000
         </p>
       </div>
+      <div
+        class="flex items-center gap-2"
+      >
+        <button
+          aria-label="Refresh API usage statistics"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint disabled:opacity-50"
+          type="button"
+        >
+          <svg
+            aria-hidden="true"
+            class="h-3.5 w-3.5 "
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+          <span>
+            Refresh
+          </span>
+        </button>
+        <button
+          aria-controls="api-usage-drawer"
+          aria-expanded="false"
+          aria-label="Open detailed usage breakdown drawer"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint sm:hidden"
+          type="button"
+        >
+          <span>
+            View Details
+          </span>
+        </button>
+      </div>
+    </div>
+    <div
+      class="sr-only"
+    >
+      <table
+        aria-label="Daily API request volume breakdown"
+      >
+        <caption>
+          Daily API request volume for the last 7 days
+        </caption>
+        <thead>
+          <tr>
+            <th
+              scope="col"
+            >
+              Date
+            </th>
+            <th
+              scope="col"
+            >
+              Requests
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              Oct 15, 2026
+            </td>
+            <td>
+              120 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 16, 2026
+            </td>
+            <td>
+              250 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 17, 2026
+            </td>
+            <td>
+              310 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 18, 2026
+            </td>
+            <td>
+              95 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 19, 2026
+            </td>
+            <td>
+              430 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 20, 2026
+            </td>
+            <td>
+              620 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 21, 2026
+            </td>
+            <td>
+              175 requests
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
     <div
       class="-mx-2 sm:mx-0"

@@ -93,6 +93,7 @@ export default function ActivityFeed() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryTrigger, setRetryTrigger] = useState(0);
   const verificationTimeouts = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   const apiKey = useMerchantApiKey();
@@ -272,13 +273,13 @@ export default function ActivityFeed() {
 
     fetchPayments();
     return () => controller.abort();
-  }, [apiKey, hydrated]);
+  }, [apiKey, hydrated, retryTrigger]);
 
   if (loading) {
     return (
       <>
         <Toaster position="top-right" richColors closeButton />
-        <div className="space-y-4 animate-pulse">
+        <div data-testid="activity-feed-loading" className="space-y-4 animate-pulse">
           {[...Array(3)].map((_, i) => (
             <div key={i} className="h-14 w-full rounded-lg bg-[#F5F5F5] sm:h-16" />
           ))}
@@ -291,8 +292,22 @@ export default function ActivityFeed() {
     return (
       <>
         <Toaster position="top-right" richColors closeButton />
-        <div className="rounded-xl border border-red-500/30 p-4 text-red-400">
-          {error}
+        <div
+          data-testid="activity-feed-error"
+          className="flex items-center justify-between rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-400"
+        >
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true);
+              setError(null);
+              setRetryTrigger((prev) => prev + 1);
+            }}
+            className="rounded bg-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+          >
+            Retry
+          </button>
         </div>
       </>
     );
@@ -302,7 +317,10 @@ export default function ActivityFeed() {
     return (
       <>
         <Toaster position="top-right" richColors closeButton />
-        <div className="flex flex-col items-center justify-center rounded-lg border border-[#E8E8E8] bg-[#F9F9F9] p-8 text-center sm:p-16">
+        <div
+          data-testid="activity-feed-empty"
+          className="flex flex-col items-center justify-center rounded-lg border border-[#E8E8E8] bg-[#F9F9F9] p-8 text-center sm:p-16"
+        >
           <h3 className="mb-3 text-lg font-bold text-[#0A0A0A] sm:text-xl">
             No activity detected
           </h3>
@@ -324,7 +342,7 @@ export default function ActivityFeed() {
   return (
     <>
       <Toaster position="top-right" richColors closeButton />
-      <div className="rounded-lg border border-[#E8E8E8] bg-white overflow-hidden">
+      <div data-testid="activity-feed" className="rounded-lg border border-[#E8E8E8] bg-white overflow-hidden">
         <div className="flex items-center justify-between border-b border-[#E8E8E8] bg-[#0A0A0A] px-4 py-4 sm:px-6">
           <h3 className="font-semibold text-white text-sm">Live Activity Feed</h3>
           <div className="flex items-center gap-2 text-[10px] font-bold text-white/70 uppercase tracking-widest">
