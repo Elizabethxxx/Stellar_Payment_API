@@ -6,6 +6,7 @@ import {
   resetExchangeRateCoordination,
   NoPathFoundError,
   ExchangeRateError,
+  ExchangeRateValidationError,
 } from './exchangeRateService.js';
 import { resetExchangeRateCache, generateRateCacheKey } from '../lib/exchange-rate-cache.js';
 import { createFakeRedis } from '../../tests/helpers/fake-redis.js';
@@ -19,6 +20,8 @@ vi.mock('../lib/logger.js', () => ({
 }));
 
 import { findStrictReceivePaths } from '../lib/stellar.js';
+
+const USDC_ISSUER = 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
 
 const MOCK_PATH = {
   source_asset_code:   'XLM',
@@ -49,6 +52,7 @@ describe('getExchangeRateQuote', () => {
     const quote = await getExchangeRateQuote({
       sourceAssetCode: 'XLM',
       destAssetCode:   'USDC',
+      destAssetIssuer: USDC_ISSUER,
       destAmount:      '1.0000000',
     });
 
@@ -61,40 +65,40 @@ describe('getExchangeRateQuote', () => {
   });
 
   it('calls findStrictReceivePaths exactly once on first call', async () => {
-    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '1.0' });
+    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '1.0' });
     expect(findStrictReceivePaths).toHaveBeenCalledTimes(1);
   });
 
   it('returns cached result on second identical call without hitting Horizon', async () => {
-    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '1.0' });
-    const second = await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '1.0' });
+    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '1.0' });
+    const second = await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '1.0' });
     expect(findStrictReceivePaths).toHaveBeenCalledTimes(1);
     expect(second.cached).toBe(true);
   });
 
   it('does not share cache between different dest amounts', async () => {
-    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '1.0' });
-    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '2.0' });
+    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '1.0' });
+    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '2.0' });
     expect(findStrictReceivePaths).toHaveBeenCalledTimes(2);
   });
 
   it('does not share cache between different asset pairs', async () => {
-    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '1.0' });
-    await getExchangeRateQuote({ sourceAssetCode: 'BTC', destAssetCode: 'USDC', destAmount: '1.0' });
+    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '1.0' });
+    await getExchangeRateQuote({ sourceAssetCode: 'BTC', sourceAssetIssuer: USDC_ISSUER, destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '1.0' });
     expect(findStrictReceivePaths).toHaveBeenCalledTimes(2);
   });
 
   it('throws NoPathFoundError when Horizon returns null', async () => {
     findStrictReceivePaths.mockResolvedValue(null);
     await expect(
-      getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '1.0' }),
+      getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '1.0' }),
     ).rejects.toThrow(NoPathFoundError);
   });
 
   it('NoPathFoundError has statusCode 404', async () => {
     findStrictReceivePaths.mockResolvedValue(null);
     try {
-      await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '1.0' });
+      await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '1.0' });
     } catch (err) {
       expect(err.statusCode).toBe(404);
     }
@@ -105,7 +109,7 @@ describe('getExchangeRateQuote', () => {
     horizonErr.status = 503;
     findStrictReceivePaths.mockRejectedValue(horizonErr);
     await expect(
-      getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '1.0' }),
+      getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '1.0' }),
     ).rejects.toThrow('Horizon unavailable');
     expect(findStrictReceivePaths).toHaveBeenCalledTimes(3);
     expect(horizonErr.retryAttempts).toBe(3);
@@ -117,7 +121,7 @@ describe('getExchangeRateQuote', () => {
       .mockResolvedValueOnce(MOCK_PATH);
     const quote = await getExchangeRateQuote({
       sourceAssetCode: 'XLM',
-      destAssetCode: 'USDC',
+      destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER,
       destAmount: '1.0',
     });
     expect(quote.sourceAmount).toBe('0.5000000');
@@ -127,7 +131,7 @@ describe('getExchangeRateQuote', () => {
   it('does not retry a deterministic 400', async () => {
     findStrictReceivePaths.mockRejectedValue(Object.assign(new Error('bad request'), { status: 400 }));
     await expect(
-      getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '1.0' }),
+      getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '1.0' }),
     ).rejects.toThrow('bad request');
     expect(findStrictReceivePaths).toHaveBeenCalledTimes(1);
   });
@@ -136,6 +140,7 @@ describe('getExchangeRateQuote', () => {
     const quote = await getExchangeRateQuote({
       sourceAssetCode: 'XLM',
       destAssetCode:   'USDC',
+      destAssetIssuer: USDC_ISSUER,
       destAmount:      '1.0000000',
       slippage:        0.02,
     });
@@ -156,17 +161,17 @@ describe('invalidateExchangeRateQuote', () => {
   });
 
   it('forces re-query after invalidation', async () => {
-    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '1.0' });
-    invalidateExchangeRateQuote('XLM', 'USDC', '1.0');
-    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '1.0' });
+    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '1.0' });
+    invalidateExchangeRateQuote('XLM', 'USDC', '1.0', null, USDC_ISSUER);
+    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '1.0' });
     expect(findStrictReceivePaths).toHaveBeenCalledTimes(2);
   });
 
   it('does not affect cache entries for different amounts', async () => {
-    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '1.0' });
-    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '2.0' });
-    invalidateExchangeRateQuote('XLM', 'USDC', '1.0');
-    const quote = await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '2.0' });
+    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '1.0' });
+    await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '2.0' });
+    invalidateExchangeRateQuote('XLM', 'USDC', '1.0', null, USDC_ISSUER);
+    const quote = await getExchangeRateQuote({ sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '2.0' });
     // The 2.0 quote is still cached, so no third Horizon call is made.
     expect(findStrictReceivePaths).toHaveBeenCalledTimes(2);
     expect(quote.cached).toBe(true);
@@ -174,7 +179,7 @@ describe('invalidateExchangeRateQuote', () => {
 });
 
 describe('concurrency control (issue #1445)', () => {
-  const params = { sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAmount: '1.0' };
+  const params = { sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '1.0' };
 
   beforeEach(() => {
     resetExchangeRateCache();
@@ -226,7 +231,7 @@ describe('concurrency control (issue #1445)', () => {
 
     const first = await getExchangeRateQuote(params);
     expect(first.cached).toBe(false);
-    const key = generateRateCacheKey('XLM', 'USDC', '1.0');
+    const key = generateRateCacheKey('XLM', 'USDC', '1.0', null, USDC_ISSUER);
     expect(redis.store.has(`exrate:quote:${key}`)).toBe(true);
 
     // A second instance with an empty in-memory cache.
@@ -241,7 +246,7 @@ describe('concurrency control (issue #1445)', () => {
     const redis = createFakeRedis();
     configureExchangeRateCoordination({ redisClient: redis });
     await getExchangeRateQuote(params);
-    invalidateExchangeRateQuote('XLM', 'USDC', '1.0');
+    invalidateExchangeRateQuote('XLM', 'USDC', '1.0', null, USDC_ISSUER);
     await vi.waitFor(() => expect(redis.count('DEL')).toBe(1));
     expect(redis.store.size).toBe(0);
   });
@@ -252,6 +257,127 @@ describe('concurrency control (issue #1445)', () => {
     redis.setFailure(new Error('ECONNREFUSED'));
     const quote = await getExchangeRateQuote(params);
     expect(quote.sourceAmount).toBe('0.5000000');
-    expect(() => invalidateExchangeRateQuote('XLM', 'USDC', '1.0')).not.toThrow();
+    expect(() => invalidateExchangeRateQuote('XLM', 'USDC', '1.0', null, USDC_ISSUER)).not.toThrow();
+  });
+});
+
+describe('payload sanitization and strict validation (issue #1442)', () => {
+  const params = { sourceAssetCode: 'XLM', destAssetCode: 'USDC', destAssetIssuer: USDC_ISSUER, destAmount: '1.0' };
+
+  beforeEach(() => {
+    resetExchangeRateCache();
+    resetExchangeRateCoordination();
+    vi.clearAllMocks();
+    process.env.EXCHANGE_RATE_ORACLE_RETRY_BASE_DELAY_MS = '0';
+    process.env.EXCHANGE_RATE_ORACLE_RETRY_MAX_DELAY_MS = '0';
+    findStrictReceivePaths.mockResolvedValue(MOCK_PATH);
+  });
+
+  afterEach(() => {
+    resetExchangeRateCache();
+    resetExchangeRateCoordination();
+  });
+
+  it.each([
+    ['a credit asset without issuer', { ...params, destAssetIssuer: null }, 'destAssetIssuer'],
+    ['a malformed amount', { ...params, destAmount: '1e9' }, 'destAmount'],
+    ['an invalid source account', { ...params, sourceAccount: 'GNOTANACCOUNT' }, 'sourceAccount'],
+    ['an out-of-range slippage', { ...params, slippage: 5 }, 'slippage'],
+  ])('rejects %s with a 400 before touching Horizon or the cache', async (_label, input, field) => {
+    await expect(getExchangeRateQuote(input)).rejects.toMatchObject({
+      name: 'ExchangeRateValidationError',
+      status: 400,
+      field,
+    });
+    expect(findStrictReceivePaths).not.toHaveBeenCalled();
+  });
+
+  it('exposes ExchangeRateValidationError for route handlers', async () => {
+    await expect(getExchangeRateQuote({ ...params, destAmount: '-1' }))
+      .rejects.toBeInstanceOf(ExchangeRateValidationError);
+  });
+
+  it('canonicalises equivalent requests onto one cache entry', async () => {
+    await getExchangeRateQuote(params);
+    const again = await getExchangeRateQuote({ ...params, destAssetCode: ' usdc ', sourceAssetIssuer: USDC_ISSUER });
+    expect(again.cached).toBe(true);
+    expect(findStrictReceivePaths).toHaveBeenCalledTimes(1);
+  });
+
+  it('passes sanitized parameters to Horizon', async () => {
+    await getExchangeRateQuote({ ...params, destAssetCode: 'usdc', sourceAssetCode: 'xlm' });
+    expect(findStrictReceivePaths).toHaveBeenCalledWith(expect.objectContaining({
+      sourceAssetCode: 'XLM',
+      sourceAssetIssuer: null,
+      destAssetCode: 'USDC',
+      destAssetIssuer: USDC_ISSUER,
+    }));
+  });
+
+  it('rejects a malformed Horizon quote with 502, without retrying or caching it', async () => {
+    findStrictReceivePaths.mockResolvedValue({ ...MOCK_PATH, source_amount: 'NaN' });
+    await expect(getExchangeRateQuote(params)).rejects.toMatchObject({ statusCode: 502, retryable: false });
+    expect(findStrictReceivePaths).toHaveBeenCalledTimes(1);
+
+    findStrictReceivePaths.mockResolvedValue(MOCK_PATH);
+    const quote = await getExchangeRateQuote(params);
+    expect(quote.cached).toBe(false);
+  });
+
+  it('strips unknown fields that a Horizon response or peer tries to smuggle in', async () => {
+    findStrictReceivePaths.mockResolvedValue({
+      ...MOCK_PATH,
+      path: [{ ...MOCK_PATH.path[0], memo: 'evil' }],
+    });
+    const quote = await getExchangeRateQuote(params);
+    expect(quote.path).toEqual([{ asset_code: 'USDC', asset_issuer: USDC_ISSUER }]);
+  });
+
+  it('sanitizes quotes read from the shared Redis store', async () => {
+    const redis = createFakeRedis();
+    configureExchangeRateCoordination({ redisClient: redis, pollIntervalMs: 5 });
+    const key = generateRateCacheKey('XLM', 'USDC', '1.0', null, USDC_ISSUER);
+    const planted = {
+      sourceAsset: 'XLM',
+      sourceAssetIssuer: null,
+      sourceAmount: '0.5000000',
+      sendMax: '0.5050000',
+      destinationAsset: 'USDC',
+      destinationAssetIssuer: USDC_ISSUER,
+      destinationAmount: '1.0',
+      path: [],
+      slippage: 0.01,
+      redirectTo: 'GATTACKER',
+    };
+    redis.store.set(`exrate:quote:${key}`, {
+      value: JSON.stringify({ v: 1, insertedAt: Date.now(), data: planted }),
+      expiresAt: null,
+    });
+
+    const quote = await getExchangeRateQuote(params);
+    expect(quote.cached).toBe(true);
+    expect(quote).not.toHaveProperty('redirectTo');
+    expect(findStrictReceivePaths).not.toHaveBeenCalled();
+  });
+
+  it('treats a shared entry that fails strict validation as a miss', async () => {
+    const redis = createFakeRedis();
+    configureExchangeRateCoordination({ redisClient: redis, pollIntervalMs: 5 });
+    const key = generateRateCacheKey('XLM', 'USDC', '1.0', null, USDC_ISSUER);
+    redis.store.set(`exrate:quote:${key}`, {
+      value: JSON.stringify({
+        v: 1,
+        data: { sourceAsset: 'XLM', sourceAmount: '9.0000000', sendMax: '0.0000001', path: [] },
+      }),
+      expiresAt: null,
+    });
+
+    const quote = await getExchangeRateQuote(params);
+    expect(quote.sendMax).toBe('0.5050000');
+    expect(findStrictReceivePaths).toHaveBeenCalledTimes(1);
+  });
+
+  it('invalidation never throws on malformed input', () => {
+    expect(() => invalidateExchangeRateQuote(null, undefined, {})).not.toThrow();
   });
 });

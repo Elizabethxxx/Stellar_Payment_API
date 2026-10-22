@@ -276,3 +276,60 @@ describe("getRelayHealth", () => {
     expect(health.lastError).toBe("down");
   });
 });
+
+// ─── HALF_OPEN single probe (issue #1455) ─────────────────────────────────────
+
+describe("CircuitBreaker HALF_OPEN concurrency", () => {
+  async function openBreaker() {
+    let fakeNow = 0;
+    const breaker = new CircuitBreaker({
+      failureThreshold: 1,
+      resetTimeoutMs: 1000,
+      now: () => fakeNow,
+    });
+    await breaker.call(() => Promise.reject(new Error("down"))).catch(() => {});
+    fakeNow += 1000;
+    return breaker;
+  }
+
+  it("admits exactly one probe while HALF_OPEN", async () => {
+    const breaker = await openBreaker();
+    let finishProbe;
+    const probe = vi.fn(() => new Promise((resolve) => {
+      finishProbe = resolve;
+    }));
+
+    const first = breaker.call(probe);
+    expect(breaker.state).toBe(CircuitState.HALF_OPEN);
+    expect(breaker.getStatus().probeInFlight).toBe(true);
+
+    const concurrent = vi.fn().mockResolvedValue("should not run");
+    await expect(breaker.call(concurrent)).rejects.toMatchObject({ circuitOpen: true });
+    expect(concurrent).not.toHaveBeenCalled();
+
+    finishProbe("ok");
+    await expect(first).resolves.toBe("ok");
+    expect(breaker.state).toBe(CircuitState.CLOSED);
+    expect(breaker.getStatus().probeInFlight).toBe(false);
+  });
+
+  it("re-opens and frees the probe slot when the probe fails", async () => {
+    const breaker = await openBreaker();
+    await expect(breaker.call(() => Promise.reject(new Error("still down")))).rejects.toThrow(
+      "still down",
+    );
+    expect(breaker.state).toBe(CircuitState.OPEN);
+    expect(breaker.getStatus().probeInFlight).toBe(false);
+  });
+
+  it("does not limit concurrency while CLOSED", async () => {
+    const breaker = new CircuitBreaker();
+    const fn = vi.fn().mockResolvedValue("ok");
+    await expect(Promise.all([breaker.call(fn), breaker.call(fn), breaker.call(fn)])).resolves.toEqual([
+      "ok",
+      "ok",
+      "ok",
+    ]);
+    expect(fn).toHaveBeenCalledTimes(3);
+  });
+});

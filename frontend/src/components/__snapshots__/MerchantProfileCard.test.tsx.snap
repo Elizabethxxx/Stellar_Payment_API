@@ -1,0 +1,367 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`MerchantProfileCard > Snapshot Tests > matches snapshot when logged in and dropdown closed 1`] = `
+<div>
+  <div
+    class="relative"
+    data-testid="merchant-profile-card"
+  >
+    <button
+      aria-expanded="false"
+      aria-haspopup="true"
+      aria-label="Open profile menu"
+      class="group flex h-10 items-center gap-2.5 rounded-full border border-[#E8E8E8] bg-white px-2.5 pr-3.5 transition-all hover:border-[#DADADA] hover:bg-[#F8F8F8] focus:outline-none focus:ring-2 focus:ring-black"
+      data-testid="merchant-profile-trigger"
+      type="button"
+    >
+      <div
+        class="bg-slate-800 border border-white/10 "
+        style="width: 30px; height: 30px; min-width: 30px; min-height: 30px; position: relative; display: flex; align-items: center; justify-content: center; border-radius: 9999px; overflow: hidden; flex-shrink: 0;"
+      >
+        <img
+          alt="Stellar Apex Ltd"
+          class="object-cover"
+          src="https://example.com/logo.png"
+        />
+      </div>
+      <div
+        class="hidden max-w-[170px] text-left sm:block"
+      >
+        <p
+          class="truncate text-xs font-bold text-[#0A0A0A]"
+        >
+          Stellar Apex Ltd
+        </p>
+        <p
+          class="truncate text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B6B6B]"
+        >
+          merchant@stellar.org
+        </p>
+      </div>
+      <svg
+        aria-hidden="true"
+        class="h-3.5 w-3.5 text-[#8A8A8A] transition-transform duration-300 "
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M19 9l-7 7-7-7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2.5"
+        />
+      </svg>
+    </button>
+  </div>
+</div>
+`;
+
+exports[`MerchantProfileCard > Snapshot Tests > matches snapshot when logged in and dropdown open 1`] = `
+<div>
+  <div
+    class="relative"
+    data-testid="merchant-profile-card"
+  >
+    <button
+      aria-expanded="true"
+      aria-haspopup="true"
+      aria-label="Open profile menu"
+      class="group flex h-10 items-center gap-2.5 rounded-full border border-[#E8E8E8] bg-white px-2.5 pr-3.5 transition-all hover:border-[#DADADA] hover:bg-[#F8F8F8] focus:outline-none focus:ring-2 focus:ring-black"
+      data-testid="merchant-profile-trigger"
+      type="button"
+    >
+      <div
+        class="bg-slate-800 border border-white/10 "
+        style="width: 30px; height: 30px; min-width: 30px; min-height: 30px; position: relative; display: flex; align-items: center; justify-content: center; border-radius: 9999px; overflow: hidden; flex-shrink: 0;"
+      >
+        <img
+          alt="Stellar Apex Ltd"
+          class="object-cover"
+          src="https://example.com/logo.png"
+        />
+      </div>
+      <div
+        class="hidden max-w-[170px] text-left sm:block"
+      >
+        <p
+          class="truncate text-xs font-bold text-[#0A0A0A]"
+        >
+          Stellar Apex Ltd
+        </p>
+        <p
+          class="truncate text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B6B6B]"
+        >
+          merchant@stellar.org
+        </p>
+      </div>
+      <svg
+        aria-hidden="true"
+        class="h-3.5 w-3.5 text-[#8A8A8A] transition-transform duration-300 rotate-180"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M19 9l-7 7-7-7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2.5"
+        />
+      </svg>
+    </button>
+    <div
+      aria-hidden="true"
+      class="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs transition-opacity sm:bg-black/10 sm:backdrop-blur-[1px]"
+      data-testid="merchant-profile-backdrop"
+    />
+    <div
+      aria-label="Merchant Account Navigation"
+      aria-orientation="vertical"
+      class="fixed inset-x-0 bottom-0 z-50 w-full max-h-[85vh] overflow-y-auto rounded-t-3xl border-t border-[#E8E8E8] bg-white p-5 shadow-2xl transition-all sm:absolute sm:inset-auto sm:right-0 sm:top-full sm:mt-3 sm:w-72 sm:max-h-none sm:origin-top-right sm:rounded-2xl sm:border sm:shadow-[0_20px_50px_rgba(0,0,0,0.12)]"
+      data-testid="merchant-profile-menu"
+      role="menu"
+    >
+      <div
+        aria-hidden="true"
+        class="flex justify-center pt-1 pb-3 sm:hidden"
+        data-testid="merchant-drawer-handle"
+      >
+        <div
+          class="h-1.5 w-12 rounded-full bg-slate-300 dark:bg-slate-600"
+        />
+      </div>
+      <div
+        class="mb-5 flex items-center gap-3.5 border-b border-[#F0F0F0] pb-5"
+      >
+        <div
+          class="bg-slate-800 border border-white/10 "
+          style="width: 52px; height: 52px; min-width: 52px; min-height: 52px; position: relative; display: flex; align-items: center; justify-content: center; border-radius: 9999px; overflow: hidden; flex-shrink: 0;"
+        >
+          <img
+            alt="Stellar Apex Ltd"
+            class="object-cover"
+            src="https://example.com/logo.png"
+          />
+        </div>
+        <div
+          class="min-w-0 flex-1"
+        >
+          <p
+            class="truncate text-base font-bold text-[#0A0A0A]"
+          >
+            Stellar Apex Ltd
+          </p>
+          <p
+            class="truncate text-[10px] font-bold text-[#6B6B6B] uppercase tracking-[0.16em]"
+          >
+            merchant@stellar.org
+          </p>
+        </div>
+      </div>
+      <div
+        class="flex flex-col gap-1.5"
+      >
+        <a
+          class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-bold uppercase tracking-widest text-[#0A0A0A] bg-[#F5F5F5] transition-all hover:bg-[#E8E8E8] focus:outline-none focus:ring-2 focus:ring-black"
+          data-testid="merchant-menu-dashboard"
+          href="/dashboard"
+          role="menuitem"
+        >
+          <svg
+            aria-hidden="true"
+            class="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+          Dashboard
+        </a>
+        <a
+          class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-bold uppercase tracking-widest text-[#6B6B6B] transition-all hover:bg-[#F5F5F5] hover:text-[#0A0A0A] focus:outline-none focus:ring-2 focus:ring-black"
+          data-testid="merchant-menu-settings"
+          href="/settings"
+          role="menuitem"
+        >
+          <svg
+            aria-hidden="true"
+            class="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+            <path
+              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+          Settings
+        </a>
+        <a
+          class="flex items-center gap-3 rounded-xl px-3 py-2.5 text-xs font-bold uppercase tracking-widest text-[#6B6B6B] transition-all hover:bg-[#F5F5F5] hover:text-[#0A0A0A] focus:outline-none focus:ring-2 focus:ring-black"
+          data-testid="merchant-menu-create-payment"
+          href="/dashboard/create"
+          role="menuitem"
+        >
+          <svg
+            aria-hidden="true"
+            class="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M12 4v16m8-8H4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+          Create Payment
+        </a>
+        <button
+          class="mt-2 flex items-center gap-3 rounded-xl bg-red-50 px-3 py-2.5 text-xs font-bold uppercase tracking-widest text-red-600 transition-all hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+          data-testid="merchant-menu-logout"
+          role="menuitem"
+          type="button"
+        >
+          <svg
+            aria-hidden="true"
+            class="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+          Logout Account
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`MerchantProfileCard > Snapshot Tests > matches snapshot when logged out 1`] = `
+<div>
+  <a
+    class="inline-flex h-10 items-center gap-2 rounded-full border border-[#E8E8E8] bg-white px-4 text-xs font-bold uppercase tracking-widest text-[#0A0A0A] transition-colors hover:bg-[#F5F5F5] focus:outline-none focus:ring-2 focus:ring-black"
+    data-testid="merchant-login-link"
+    href="/login"
+  >
+    <svg
+      aria-hidden="true"
+      class="h-3.5 w-3.5"
+      fill="none"
+      stroke="currentColor"
+      viewBox="0 0 24 24"
+    >
+      <path
+        d="M5.121 17.804A9 9 0 1118.879 17.804M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="2"
+      />
+    </svg>
+    Account
+  </a>
+</div>
+`;
+
+exports[`MerchantProfileCard > Snapshot Tests > matches snapshot when not hydrated 1`] = `
+<div>
+  <div
+    aria-label="Loading profile…"
+    class="h-10 w-10 shrink-0 animate-pulse rounded-full border border-[#E8E8E8] bg-[#F0F0F0] sm:w-40"
+    data-testid="merchant-profile-loading"
+    role="status"
+  />
+</div>
+`;
+
+exports[`MerchantProfileCard > Snapshot Tests > matches snapshot with fallback merchant details 1`] = `
+<div>
+  <div
+    class="relative"
+    data-testid="merchant-profile-card"
+  >
+    <button
+      aria-expanded="false"
+      aria-haspopup="true"
+      aria-label="Open profile menu"
+      class="group flex h-10 items-center gap-2.5 rounded-full border border-[#E8E8E8] bg-white px-2.5 pr-3.5 transition-all hover:border-[#DADADA] hover:bg-[#F8F8F8] focus:outline-none focus:ring-2 focus:ring-black"
+      data-testid="merchant-profile-trigger"
+      type="button"
+    >
+      <div
+        aria-label="simple@stellar.org"
+        class="font-semibold tracking-tight shadow-sm relative group select-none "
+        style="width: 30px; height: 30px; min-width: 30px; min-height: 30px; position: relative; display: flex; align-items: center; justify-content: center; border-radius: 9999px; overflow: hidden; flex-shrink: 0; background-color: rgb(230, 77, 128); color: rgb(254, 246, 249); font-size: 11.538461538461538px; text-shadow: 0 1px 2px rgba(0,0,0,0.1);"
+      >
+        <span
+          class="relative z-10 leading-none"
+        >
+          SI
+        </span>
+        <div
+          class="absolute inset-0 bg-gradient-to-br from-white/30 to-transparent opacity-40 pointer-events-none"
+        />
+        <div
+          class="absolute inset-0 rounded-full border border-white/20 pointer-events-none"
+        />
+        <div
+          class="absolute inset-0 bg-white/0 transition-colors group-hover:bg-white/10 pointer-events-none"
+        />
+      </div>
+      <div
+        class="hidden max-w-[170px] text-left sm:block"
+      >
+        <p
+          class="truncate text-xs font-bold text-[#0A0A0A]"
+        >
+          simple@stellar.org
+        </p>
+        <p
+          class="truncate text-[10px] font-bold uppercase tracking-[0.18em] text-[#6B6B6B]"
+        >
+          simple@stellar.org
+        </p>
+      </div>
+      <svg
+        aria-hidden="true"
+        class="h-3.5 w-3.5 text-[#8A8A8A] transition-transform duration-300 "
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+      >
+        <path
+          d="M19 9l-7 7-7-7"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2.5"
+        />
+      </svg>
+    </button>
+  </div>
+</div>
+`;

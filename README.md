@@ -2,7 +2,7 @@
 
 PLUTO is a dual-mode payment infrastructure built on Stellar that bridges the gap between traditional Web3 e-commerce (human-driven checkouts via Freighter) and the emerging headless machine economy (AI agents interacting autonomously via the x402 Payment Required protocol).
 
-As AI agents become more capable and autonomous, they need a native way to pay for API access, computational resources, and premium data without human intervention. PLUTO provides a robust framework that enables developers and merchants to seamlessly monetize API endpoints for AI agents natively on the Stellar blockchain.
+As AI agents become more capable and autonomous, they need a native way to pay for API access, computational resources, and premium data without human intervention. PLUTO provides a robust framework that enables developers and merchants to seamlessly monetize API endpoints for AI agents natively on the Stellar blockchain
 
 ## How it works (x402 Protocol)
 
@@ -41,7 +41,7 @@ USDC issuer (testnet): `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5
 - Node.js 18+
 - Redis
 - Supabase account
-- Stellar testnet wallet (Freighter)
+- Stellar testnet wallet
 
 ### Backend
 ```bash
@@ -97,7 +97,7 @@ REDIS_URL=redis://localhost:6379
 ## What's Next
 
 - **MPP (Stripe Machine Payments)** — payment channels for high-frequency agent interactions without per-tx fees
-- **Agent marketplace** — merchants list paywalled APIs, agents discover and pay autonomously
+- **Agent marketplace** — merchants list APIs, agents discover and pay autonomously
 - **Ethereum support** — same frontend, separate backend service for ERC-20 payments
 - **Spending policies** — contract accounts with per-agent USDC limits
 

@@ -1,0 +1,392 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ActivityFeed Component > Snapshot Tests > matches snapshot on empty state 1`] = `
+<div>
+  <div
+    data-testid="toaster"
+  />
+  <div
+    class="flex flex-col items-center justify-center rounded-lg border border-[#E8E8E8] bg-[#F9F9F9] p-8 text-center sm:p-16"
+    data-testid="activity-feed-empty"
+  >
+    <h3
+      class="mb-3 text-lg font-bold text-[#0A0A0A] sm:text-xl"
+    >
+      No activity detected
+    </h3>
+    <p
+      class="mb-8 max-w-sm text-sm font-medium text-[#6B6B6B] sm:text-base"
+    >
+      Your live feed will populate here once you start receiving payments. Create a link to get started.
+    </p>
+    <a
+      class="w-full rounded-[6px] bg-[#0A0A0A] px-6 py-3 text-sm font-semibold text-white transition-all hover:bg-[#222] sm:w-auto"
+      href="/dashboard/create"
+    >
+      Create First Payment
+    </a>
+  </div>
+</div>
+`;
+
+exports[`ActivityFeed Component > Snapshot Tests > matches snapshot on error state 1`] = `
+<div>
+  <div
+    data-testid="toaster"
+  />
+  <div
+    class="flex items-center justify-between rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-400"
+    data-testid="activity-feed-error"
+  >
+    <span>
+      Failed to fetch payments
+    </span>
+    <button
+      class="rounded bg-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-300 transition-colors hover:bg-red-500/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+      type="button"
+    >
+      Retry
+    </button>
+  </div>
+</div>
+`;
+
+exports[`ActivityFeed Component > Snapshot Tests > matches snapshot on loading state 1`] = `
+<div>
+  <div
+    data-testid="toaster"
+  />
+  <div
+    class="space-y-4 animate-pulse"
+    data-testid="activity-feed-loading"
+  >
+    <div
+      class="h-14 w-full rounded-lg bg-[#F5F5F5] sm:h-16"
+    />
+    <div
+      class="h-14 w-full rounded-lg bg-[#F5F5F5] sm:h-16"
+    />
+    <div
+      class="h-14 w-full rounded-lg bg-[#F5F5F5] sm:h-16"
+    />
+  </div>
+</div>
+`;
+
+exports[`ActivityFeed Component > Snapshot Tests > matches snapshot on populated state 1`] = `
+<div>
+  <div
+    data-testid="toaster"
+  />
+  <div
+    class="rounded-lg border border-[#E8E8E8] bg-white overflow-hidden"
+    data-testid="activity-feed"
+  >
+    <div
+      class="flex items-center justify-between border-b border-[#E8E8E8] bg-[#0A0A0A] px-4 py-4 sm:px-6"
+    >
+      <h3
+        class="font-semibold text-white text-sm"
+      >
+        Live Activity Feed
+      </h3>
+      <div
+        class="flex items-center gap-2 text-[10px] font-bold text-white/70 uppercase tracking-widest"
+      >
+        <span
+          class="h-1.5 w-1.5 rounded-full bg-white animate-pulse"
+        />
+        Live
+      </div>
+    </div>
+    <div
+      class="space-y-3 p-4 sm:hidden"
+    >
+      <div
+        aria-label="Payment Annual Subscription for 250.00 USDC"
+        class="rounded-lg border p-3 outline-none transition-all duration-200 ease-in-out hover:border-l-2 hover:border-l-pluto-500 hover:bg-pluto-50 hover:shadow-sm active:scale-[0.985] active:bg-pluto-100 focus-visible:ring-2 focus-visible:ring-pluto-500 focus-visible:ring-offset-2 cursor-pointer border-[#E8E8E8] bg-white "
+        role="row"
+        tabindex="0"
+      >
+        <div
+          class="mb-2 flex items-start justify-between gap-3"
+        >
+          <p
+            class="truncate text-sm font-semibold text-[#0A0A0A]"
+          >
+            Annual Subscription
+          </p>
+          <div
+            aria-label="Status: confirmed"
+            class="shrink-0 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-tight bg-[#0A0A0A] text-white"
+          >
+            confirmed
+          </div>
+        </div>
+        <div
+          class="flex items-center justify-between gap-3"
+        >
+          <time
+            class="text-[11px] font-medium text-[#6B6B6B]"
+            datetime="2026-10-21T10:00:00.000Z"
+          >
+            10/21/2026
+          </time>
+          <p
+            class="text-right text-sm font-bold text-[#0A0A0A]"
+          >
+            250.00 USDC
+          </p>
+        </div>
+      </div>
+      <div
+        aria-label="Payment Service Tip for 45.50 XLM"
+        class="rounded-lg border p-3 outline-none transition-all duration-200 ease-in-out hover:border-l-2 hover:border-l-pluto-500 hover:bg-pluto-50 hover:shadow-sm active:scale-[0.985] active:bg-pluto-100 focus-visible:ring-2 focus-visible:ring-pluto-500 focus-visible:ring-offset-2 cursor-pointer border-[#ECECEC] bg-[#F9F9F9] "
+        role="row"
+        tabindex="0"
+      >
+        <div
+          class="mb-2 flex items-start justify-between gap-3"
+        >
+          <p
+            class="truncate text-sm font-semibold text-[#0A0A0A]"
+          >
+            Service Tip
+          </p>
+          <div
+            aria-label="Status: pending"
+            class="shrink-0 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-tight bg-[#F5F5F5] text-[#6B6B6B] border border-[#E8E8E8]"
+          >
+            pending
+          </div>
+        </div>
+        <div
+          class="flex items-center justify-between gap-3"
+        >
+          <time
+            class="text-[11px] font-medium text-[#6B6B6B]"
+            datetime="2026-10-21T09:30:00.000Z"
+          >
+            10/21/2026
+          </time>
+          <p
+            class="text-right text-sm font-bold text-[#0A0A0A]"
+          >
+            45.50 XLM
+          </p>
+        </div>
+      </div>
+      <div
+        aria-label="Payment Enterprise Invoice for 1000.00 USDC"
+        class="rounded-lg border p-3 outline-none transition-all duration-200 ease-in-out hover:border-l-2 hover:border-l-pluto-500 hover:bg-pluto-50 hover:shadow-sm active:scale-[0.985] active:bg-pluto-100 focus-visible:ring-2 focus-visible:ring-pluto-500 focus-visible:ring-offset-2 cursor-pointer border-[#E8E8E8] bg-white "
+        role="row"
+        tabindex="0"
+      >
+        <div
+          class="mb-2 flex items-start justify-between gap-3"
+        >
+          <p
+            class="truncate text-sm font-semibold text-[#0A0A0A]"
+          >
+            Enterprise Invoice
+          </p>
+          <div
+            aria-label="Status: failed"
+            class="shrink-0 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-tight bg-red-50 text-red-600 border border-red-100"
+          >
+            failed
+          </div>
+        </div>
+        <div
+          class="flex items-center justify-between gap-3"
+        >
+          <time
+            class="text-[11px] font-medium text-[#6B6B6B]"
+            datetime="2026-10-21T08:15:00.000Z"
+          >
+            10/21/2026
+          </time>
+          <p
+            class="text-right text-sm font-bold text-[#0A0A0A]"
+          >
+            1000.00 USDC
+          </p>
+        </div>
+      </div>
+    </div>
+    <div
+      class="hidden overflow-x-auto sm:block"
+    >
+      <table
+        class="w-full text-left border-separate border-spacing-0"
+      >
+        <thead>
+          <tr
+            class="bg-[#F9F9F9] border-b border-[#E8E8E8]"
+          >
+            <th
+              class="px-6 py-3 text-[11px] font-bold text-[#6B6B6B] uppercase tracking-wider"
+            >
+              Status
+            </th>
+            <th
+              class="px-6 py-3 text-[11px] font-bold text-[#6B6B6B] uppercase tracking-wider"
+            >
+              Description
+            </th>
+            <th
+              class="px-6 py-3 text-[11px] font-bold text-[#6B6B6B] uppercase tracking-wider"
+            >
+              Date
+            </th>
+            <th
+              class="px-6 py-3 text-right text-[11px] font-bold text-[#6B6B6B] uppercase tracking-wider"
+            >
+              Amount
+            </th>
+          </tr>
+        </thead>
+        <tbody
+          class="divide-y divide-[#E8E8E8]"
+        >
+          <tr
+            aria-label="Payment Annual Subscription for 250.00 USDC"
+            class="group cursor-pointer outline-none transition-all duration-200 ease-in-out hover:bg-pluto-50 hover:shadow-sm active:bg-pluto-100 active:scale-[0.985] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-pluto-500 bg-white "
+            role="row"
+            tabindex="0"
+          >
+            <td
+              class="border-l-0 border-transparent px-6 py-4 transition-all duration-200 group-hover:border-l-2 group-hover:border-l-pluto-500"
+            >
+              <div
+                aria-label="Status: confirmed"
+                class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-tight bg-[#0A0A0A] text-white"
+              >
+                confirmed
+              </div>
+            </td>
+            <td
+              class="px-6 py-4"
+            >
+              <p
+                class="text-sm font-semibold text-[#0A0A0A] truncate max-w-[200px]"
+              >
+                Annual Subscription
+              </p>
+            </td>
+            <td
+              class="px-6 py-4"
+            >
+              <time
+                class="text-[11px] font-medium text-[#6B6B6B]"
+                datetime="2026-10-21T10:00:00.000Z"
+              >
+                10/21/2026
+              </time>
+            </td>
+            <td
+              class="px-6 py-4 text-right"
+            >
+              <p
+                class="text-sm font-bold text-[#0A0A0A]"
+              >
+                250.00 USDC
+              </p>
+            </td>
+          </tr>
+          <tr
+            aria-label="Payment Service Tip for 45.50 XLM"
+            class="group cursor-pointer outline-none transition-all duration-200 ease-in-out hover:bg-pluto-50 hover:shadow-sm active:bg-pluto-100 active:scale-[0.985] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-pluto-500 bg-[#F9F9F9] "
+            role="row"
+            tabindex="0"
+          >
+            <td
+              class="border-l-0 border-transparent px-6 py-4 transition-all duration-200 group-hover:border-l-2 group-hover:border-l-pluto-500"
+            >
+              <div
+                aria-label="Status: pending"
+                class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-tight bg-[#F5F5F5] text-[#6B6B6B] border border-[#E8E8E8]"
+              >
+                pending
+              </div>
+            </td>
+            <td
+              class="px-6 py-4"
+            >
+              <p
+                class="text-sm font-semibold text-[#0A0A0A] truncate max-w-[200px]"
+              >
+                Service Tip
+              </p>
+            </td>
+            <td
+              class="px-6 py-4"
+            >
+              <time
+                class="text-[11px] font-medium text-[#6B6B6B]"
+                datetime="2026-10-21T09:30:00.000Z"
+              >
+                10/21/2026
+              </time>
+            </td>
+            <td
+              class="px-6 py-4 text-right"
+            >
+              <p
+                class="text-sm font-bold text-[#0A0A0A]"
+              >
+                45.50 XLM
+              </p>
+            </td>
+          </tr>
+          <tr
+            aria-label="Payment Enterprise Invoice for 1000.00 USDC"
+            class="group cursor-pointer outline-none transition-all duration-200 ease-in-out hover:bg-pluto-50 hover:shadow-sm active:bg-pluto-100 active:scale-[0.985] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-pluto-500 bg-white "
+            role="row"
+            tabindex="0"
+          >
+            <td
+              class="border-l-0 border-transparent px-6 py-4 transition-all duration-200 group-hover:border-l-2 group-hover:border-l-pluto-500"
+            >
+              <div
+                aria-label="Status: failed"
+                class="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-tight bg-red-50 text-red-600 border border-red-100"
+              >
+                failed
+              </div>
+            </td>
+            <td
+              class="px-6 py-4"
+            >
+              <p
+                class="text-sm font-semibold text-[#0A0A0A] truncate max-w-[200px]"
+              >
+                Enterprise Invoice
+              </p>
+            </td>
+            <td
+              class="px-6 py-4"
+            >
+              <time
+                class="text-[11px] font-medium text-[#6B6B6B]"
+                datetime="2026-10-21T08:15:00.000Z"
+              >
+                10/21/2026
+              </time>
+            </td>
+            <td
+              class="px-6 py-4 text-right"
+            >
+              <p
+                class="text-sm font-bold text-[#0A0A0A]"
+              >
+                1000.00 USDC
+              </p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+`;

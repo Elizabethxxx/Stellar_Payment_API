@@ -1,0 +1,616 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`AssetConverter Component > Snapshot Tests > matches snapshot on initial render 1`] = `
+<div>
+  <div
+    aria-describedby="asset-converter-description"
+    aria-labelledby="asset-converter-title"
+    aria-modal="true"
+    class="fixed inset-x-0 bottom-0 z-50 flex max-h-[90vh] w-full flex-col overflow-y-auto rounded-t-3xl border-t border-white/10 bg-slate-900/95 shadow-2xl backdrop-blur-xl sm:relative sm:inset-auto sm:max-h-none sm:rounded-xl sm:border sm:border-white/10 sm:bg-slate-900/90 sm:shadow-none"
+    data-testid="asset-converter-modal"
+    role="dialog"
+  >
+    <div
+      aria-hidden="true"
+      class="flex justify-center pt-3 pb-1 sm:hidden"
+      data-testid="asset-converter-drawer-handle"
+    >
+      <div
+        class="h-1.5 w-12 rounded-full bg-white/20"
+      />
+    </div>
+    <div
+      class="flex items-center gap-3 border-b border-white/10 px-4 py-3"
+    >
+      <button
+        aria-label="Close asset converter and return to commands"
+        class="flex h-7 w-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-400 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-mint focus:ring-offset-2 focus:ring-offset-slate-900"
+        type="button"
+      >
+        <svg
+          class="h-4 w-4"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M19 12H5m0 0 5-5m-5 5 5 5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
+      <div
+        class="flex items-center gap-2"
+      >
+        <svg
+          aria-hidden="true"
+          class="h-5 w-5 text-mint"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M2 17 12 7l10 10"
+            opacity="0.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M2 12 12 2l10 10"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        <h2
+          class="text-sm font-semibold text-white"
+          id="asset-converter-title"
+        >
+          Asset Converter
+        </h2>
+      </div>
+      <kbd
+        aria-hidden="true"
+        class="ml-auto hidden rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-slate-500 sm:inline-block"
+      >
+        ESC
+      </kbd>
+    </div>
+    <div
+      class="sr-only"
+      id="asset-converter-description"
+    >
+      Convert between Stellar assets using strict send path payment. Enter source and destination assets with amounts to get conversion rates and paths.
+    </div>
+    <div
+      class="flex flex-col gap-4 p-4"
+    >
+      <fieldset
+        class="flex flex-col gap-1.5"
+      >
+        <legend
+          class="text-[11px] font-semibold uppercase tracking-wider text-slate-500"
+        >
+          From
+        </legend>
+        <div
+          class="flex gap-2"
+        >
+          <input
+            aria-describedby="from-asset-help"
+            aria-label="Source asset code (1-12 alphanumeric characters)"
+            aria-required="true"
+            class="w-28 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none transition-colors focus:border-mint focus:ring-2 focus:ring-mint"
+            placeholder="XLM"
+            type="text"
+            value="XLM"
+          />
+        </div>
+        <div
+          class="sr-only"
+          id="from-asset-help"
+        >
+          Enter the asset code you want to convert from. Use XLM for native Stellar Lumens, or enter a custom asset code up to 12 characters.
+        </div>
+        <input
+          aria-describedby="amount-help"
+          aria-label="Amount to convert (positive decimal number)"
+          aria-required="true"
+          class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none transition-colors focus:border-mint focus:ring-2 focus:ring-mint"
+          inputmode="decimal"
+          placeholder="Amount"
+          type="text"
+          value=""
+        />
+        <div
+          class="sr-only"
+          id="amount-help"
+        >
+          Enter the amount of the source asset you want to convert. Must be a positive number.
+        </div>
+      </fieldset>
+      <div
+        class="flex justify-center"
+      >
+        <button
+          aria-describedby="swap-button-help"
+          aria-label="Swap source and destination assets"
+          class="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-400 transition-all hover:border-mint/30 hover:bg-mint/10 hover:text-mint focus:outline-none focus:ring-2 focus:ring-mint focus:ring-offset-2 focus:ring-offset-slate-900"
+          type="button"
+        >
+          <svg
+            class="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M7 16V4m0 0L3 8m4-4 4 4M17 8v12m0 0 4-4m-4 4-4-4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+        <div
+          class="sr-only"
+          id="swap-button-help"
+        >
+          Exchange the from and to assets. Your source asset becomes the destination and vice versa.
+        </div>
+      </div>
+      <fieldset
+        class="flex flex-col gap-1.5"
+      >
+        <legend
+          class="text-[11px] font-semibold uppercase tracking-wider text-slate-500"
+        >
+          To
+        </legend>
+        <div
+          class="flex gap-2"
+        >
+          <input
+            aria-describedby="to-asset-help"
+            aria-label="Destination asset code (1-12 alphanumeric characters)"
+            aria-required="true"
+            class="w-28 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none transition-colors focus:border-mint focus:ring-2 focus:ring-mint"
+            placeholder="USDC"
+            type="text"
+            value="USDC"
+          />
+          <input
+            aria-describedby="to-issuer-help"
+            aria-label="Destination asset issuer address (starts with G)"
+            aria-required="true"
+            class="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-white placeholder-slate-600 outline-none transition-colors focus:border-mint focus:ring-2 focus:ring-mint"
+            placeholder="Issuer G…"
+            type="text"
+            value="GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+          />
+        </div>
+        <div
+          class="sr-only"
+          id="to-asset-help"
+        >
+          Enter the asset code you want to convert to. Use XLM for native Stellar Lumens, or enter a custom asset code up to 12 characters.
+        </div>
+        <div
+          class="sr-only"
+          id="to-issuer-help"
+        >
+          Enter the Stellar address of the destination asset issuer. Must start with G and be 56 characters long.
+        </div>
+      </fieldset>
+      <button
+        aria-busy="false"
+        aria-disabled="false"
+        aria-label="Convert assets"
+        class="group relative flex h-10 w-full items-center justify-center rounded-lg font-semibold text-black transition-all disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-mint focus:ring-offset-2 focus:ring-offset-slate-900"
+        style="background-color: var(--color-mint);"
+        type="button"
+      >
+        Convert
+        <div
+          aria-hidden="true"
+          class="absolute inset-0 -z-10 rounded-lg opacity-0 blur-xl transition-opacity group-hover:opacity-100"
+          style="background-color: color-mix(in srgb, var(--color-mint) 25%, transparent);"
+        />
+      </button>
+    </div>
+    <div
+      class="flex items-center gap-4 border-t border-white/10 px-4 py-2"
+    >
+      <span
+        class="flex items-center gap-1 text-[11px] text-slate-500"
+      >
+        <kbd
+          class="rounded border border-white/10 bg-white/5 px-1 py-0.5 font-mono text-[10px]"
+        >
+          ↵
+        </kbd>
+        convert
+      </span>
+      <span
+        class="flex items-center gap-1 text-[11px] text-slate-500"
+      >
+        <kbd
+          class="rounded border border-white/10 bg-white/5 px-1 py-0.5 font-mono text-[10px]"
+        >
+          esc
+        </kbd>
+        back
+      </span>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`AssetConverter Component > Snapshot Tests > matches snapshot with populated quote 1`] = `
+<div>
+  <div
+    aria-describedby="asset-converter-description"
+    aria-labelledby="asset-converter-title"
+    aria-modal="true"
+    class="fixed inset-x-0 bottom-0 z-50 flex max-h-[90vh] w-full flex-col overflow-y-auto rounded-t-3xl border-t border-white/10 bg-slate-900/95 shadow-2xl backdrop-blur-xl sm:relative sm:inset-auto sm:max-h-none sm:rounded-xl sm:border sm:border-white/10 sm:bg-slate-900/90 sm:shadow-none"
+    data-testid="asset-converter-modal"
+    role="dialog"
+  >
+    <div
+      aria-hidden="true"
+      class="flex justify-center pt-3 pb-1 sm:hidden"
+      data-testid="asset-converter-drawer-handle"
+    >
+      <div
+        class="h-1.5 w-12 rounded-full bg-white/20"
+      />
+    </div>
+    <div
+      class="flex items-center gap-3 border-b border-white/10 px-4 py-3"
+    >
+      <button
+        aria-label="Close asset converter and return to commands"
+        class="flex h-7 w-7 items-center justify-center rounded-md border border-white/10 bg-white/5 text-slate-400 transition-colors hover:bg-white/10 hover:text-white focus:outline-none focus:ring-2 focus:ring-mint focus:ring-offset-2 focus:ring-offset-slate-900"
+        type="button"
+      >
+        <svg
+          class="h-4 w-4"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M19 12H5m0 0 5-5m-5 5 5 5"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
+      <div
+        class="flex items-center gap-2"
+      >
+        <svg
+          aria-hidden="true"
+          class="h-5 w-5 text-mint"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M2 17 12 7l10 10"
+            opacity="0.4"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+          <path
+            d="M2 12 12 2l10 10"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          />
+        </svg>
+        <h2
+          class="text-sm font-semibold text-white"
+          id="asset-converter-title"
+        >
+          Asset Converter
+        </h2>
+      </div>
+      <kbd
+        aria-hidden="true"
+        class="ml-auto hidden rounded border border-white/10 bg-white/5 px-1.5 py-0.5 font-mono text-[10px] text-slate-500 sm:inline-block"
+      >
+        ESC
+      </kbd>
+    </div>
+    <div
+      class="sr-only"
+      id="asset-converter-description"
+    >
+      Convert between Stellar assets using strict send path payment. Enter source and destination assets with amounts to get conversion rates and paths.
+    </div>
+    <div
+      class="flex flex-col gap-4 p-4"
+    >
+      <fieldset
+        class="flex flex-col gap-1.5"
+      >
+        <legend
+          class="text-[11px] font-semibold uppercase tracking-wider text-slate-500"
+        >
+          From
+        </legend>
+        <div
+          class="flex gap-2"
+        >
+          <input
+            aria-describedby="from-asset-help"
+            aria-label="Source asset code (1-12 alphanumeric characters)"
+            aria-required="true"
+            class="w-28 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none transition-colors focus:border-mint focus:ring-2 focus:ring-mint"
+            placeholder="XLM"
+            type="text"
+            value="XLM"
+          />
+        </div>
+        <div
+          class="sr-only"
+          id="from-asset-help"
+        >
+          Enter the asset code you want to convert from. Use XLM for native Stellar Lumens, or enter a custom asset code up to 12 characters.
+        </div>
+        <input
+          aria-describedby="amount-help"
+          aria-label="Amount to convert (positive decimal number)"
+          aria-required="true"
+          class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none transition-colors focus:border-mint focus:ring-2 focus:ring-mint"
+          inputmode="decimal"
+          placeholder="Amount"
+          type="text"
+          value="10"
+        />
+        <div
+          class="sr-only"
+          id="amount-help"
+        >
+          Enter the amount of the source asset you want to convert. Must be a positive number.
+        </div>
+      </fieldset>
+      <div
+        class="flex justify-center"
+      >
+        <button
+          aria-describedby="swap-button-help"
+          aria-label="Swap source and destination assets"
+          class="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/5 text-slate-400 transition-all hover:border-mint/30 hover:bg-mint/10 hover:text-mint focus:outline-none focus:ring-2 focus:ring-mint focus:ring-offset-2 focus:ring-offset-slate-900"
+          type="button"
+        >
+          <svg
+            class="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M7 16V4m0 0L3 8m4-4 4 4M17 8v12m0 0 4-4m-4 4-4-4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+        <div
+          class="sr-only"
+          id="swap-button-help"
+        >
+          Exchange the from and to assets. Your source asset becomes the destination and vice versa.
+        </div>
+      </div>
+      <fieldset
+        class="flex flex-col gap-1.5"
+      >
+        <legend
+          class="text-[11px] font-semibold uppercase tracking-wider text-slate-500"
+        >
+          To
+        </legend>
+        <div
+          class="flex gap-2"
+        >
+          <input
+            aria-describedby="to-asset-help"
+            aria-label="Destination asset code (1-12 alphanumeric characters)"
+            aria-required="true"
+            class="w-28 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder-slate-600 outline-none transition-colors focus:border-mint focus:ring-2 focus:ring-mint"
+            placeholder="USDC"
+            type="text"
+            value="USDC"
+          />
+          <input
+            aria-describedby="to-issuer-help"
+            aria-label="Destination asset issuer address (starts with G)"
+            aria-required="true"
+            class="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 font-mono text-xs text-white placeholder-slate-600 outline-none transition-colors focus:border-mint focus:ring-2 focus:ring-mint"
+            placeholder="Issuer G…"
+            type="text"
+            value="GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5"
+          />
+        </div>
+        <div
+          class="sr-only"
+          id="to-asset-help"
+        >
+          Enter the asset code you want to convert to. Use XLM for native Stellar Lumens, or enter a custom asset code up to 12 characters.
+        </div>
+        <div
+          class="sr-only"
+          id="to-issuer-help"
+        >
+          Enter the Stellar address of the destination asset issuer. Must start with G and be 56 characters long.
+        </div>
+      </fieldset>
+      <button
+        aria-busy="false"
+        aria-disabled="false"
+        aria-label="Convert assets"
+        class="group relative flex h-10 w-full items-center justify-center rounded-lg font-semibold text-black transition-all disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-mint focus:ring-offset-2 focus:ring-offset-slate-900"
+        style="background-color: var(--color-mint);"
+        type="button"
+      >
+        Convert
+        <div
+          aria-hidden="true"
+          class="absolute inset-0 -z-10 rounded-lg opacity-0 blur-xl transition-opacity group-hover:opacity-100"
+          style="background-color: color-mix(in srgb, var(--color-mint) 25%, transparent);"
+        />
+      </button>
+      <div
+        aria-label="Conversion result"
+        aria-live="polite"
+        class="flex flex-col gap-2.5 rounded-lg border border-mint/20 bg-mint/5 p-3"
+        role="region"
+      >
+        <div
+          class="flex items-baseline justify-between"
+        >
+          <span
+            class="text-xs font-medium uppercase tracking-wider text-slate-400"
+          >
+            Rate
+          </span>
+          <span
+            aria-label="Exchange rate: 1 XLM equals approximately 0.1250000 USDC:GBBD…FLA5"
+            class="font-mono text-sm font-bold text-white"
+          >
+            1 
+            XLM
+             ≈ 
+            0.1250000
+             
+            USDC:GBBD…FLA5
+          </span>
+        </div>
+        <div
+          class="flex items-baseline justify-between"
+        >
+          <span
+            class="text-xs text-slate-400"
+          >
+            You send
+          </span>
+          <span
+            aria-label="You send 10 XLM"
+            class="font-mono text-sm text-white"
+          >
+            10
+             
+            XLM
+          </span>
+        </div>
+        <div
+          class="flex items-baseline justify-between"
+        >
+          <span
+            class="text-xs text-slate-400"
+          >
+            You receive
+          </span>
+          <span
+            aria-label="You receive 1.2500000 USDC:GBBD…FLA5"
+            class="font-mono text-sm font-bold text-mint"
+          >
+            1.2500000
+             
+            USDC:GBBD…FLA5
+          </span>
+        </div>
+        <div
+          class="flex items-baseline justify-between"
+        >
+          <span
+            class="text-xs text-slate-400"
+          >
+            Slippage buffer
+          </span>
+          <span
+            aria-label="Maximum slippage: 10.1000000 XLM, which is 1 percent"
+            class="font-mono text-xs text-slate-400"
+          >
+            ≤ 
+            10.1000000
+             
+            XLM
+             (
+            1
+            %)
+          </span>
+        </div>
+        <div
+          class="flex items-center justify-between border-t border-white/5 pt-2"
+        >
+          <span
+            aria-live="off"
+            class="text-[11px] text-slate-500"
+          >
+            Quoted 
+            0
+            s ago
+          </span>
+          <button
+            aria-label="Refresh quote to get updated conversion rates"
+            class="flex items-center gap-1 text-[11px] text-mint transition-colors hover:text-glow disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-mint focus:ring-offset-2 focus:ring-offset-slate-900"
+            type="button"
+          >
+            <svg
+              class="h-3 w-3 "
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M21 12a9 9 0 1 1-2.6-6.36"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M21 3v6h-6"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+    </div>
+    <div
+      class="flex items-center gap-4 border-t border-white/10 px-4 py-2"
+    >
+      <span
+        class="flex items-center gap-1 text-[11px] text-slate-500"
+      >
+        <kbd
+          class="rounded border border-white/10 bg-white/5 px-1 py-0.5 font-mono text-[10px]"
+        >
+          ↵
+        </kbd>
+        convert
+      </span>
+      <span
+        class="flex items-center gap-1 text-[11px] text-slate-500"
+      >
+        <kbd
+          class="rounded border border-white/10 bg-white/5 px-1 py-0.5 font-mono text-[10px]"
+        >
+          esc
+        </kbd>
+        back
+      </span>
+    </div>
+  </div>
+</div>
+`;
