@@ -248,11 +248,14 @@ async function purgeWebhookLogs(options = {}) {
   const startedAt = Date.now();
   const tableName = WEBHOOK_LOGS_TABLE;
   const timestampColumn = WEBHOOK_LOGS_TIMESTAMP_COLUMN;
+  // Stop retrying once the run is past its time budget: a purge that keeps
+  // failing should surface as a failed run, not hold the primary for hours.
+  const retryOptions = {
+    ...retry,
+    shouldAbort: () => Date.now() - startedAt > maxDurationMs,
+  };
 
-  await validatePurgeSafety({ pool, tableName, timestampColumn });
-
-  // Compliance warning: payment audit records may require longer retention by policy/regulation.
-  // Confirm this table contains operational delivery telemetry only before enforcing 30-day retention.
+  recordLogRetentionRunStart();
   let totalDeleted = 0;
   let deletedInBatch = 0;
   let batches = 0;
@@ -308,8 +311,49 @@ async function purgeWebhookLogs(options = {}) {
   });
 }
 
+/**
+ * Purge webhook delivery logs while holding the cross-instance purge lock
+ * (issue #1475). Use this from schedulers and scripts; it is safe to call
+ * from every instance at once: exactly one runs, the others are skipped.
+ *
+ * Accepts the same options as purgeWebhookLogs.
+ *
+ * @returns {Promise<
+ *   | { skipped: true, reason: "locked", tableName: string }
+ *   | (Awaited<ReturnType<typeof purgeWebhookLogs>> & { skipped: false })
+ * >}
+ */
+async function runLogRetentionPurge(options = {}) {
+  const { pool, retry = {} } = options;
+  if (!pool) {
+    throw new Error("A pg pool/client is required for runLogRetentionPurge.");
+  }
+
+  const tableName = WEBHOOK_LOGS_TABLE;
+  const key = buildLogRetentionLockKey(tableName);
+  const outcome = await withLogRetentionLock(
+    pool,
+    key,
+    () => purgeWebhookLogs(options),
+    retry,
+  );
+
+  if (outcome.skipped) {
+    recordLogRetentionRunFinish({ outcome: "skipped" });
+    logger.info(
+      { table: tableName },
+      "Log retention purge skipped: another run holds the lock",
+    );
+    return { skipped: true, reason: "locked", tableName };
+  }
+
+  return { ...outcome.result, skipped: false };
+}
+
 export {
   purgeWebhookLogs,
+  runLogRetentionPurge,
+  LogRetentionSafetyError,
   parsePositiveInteger,
   validatePurgeOptions,
   sanitizeLogMessage,
