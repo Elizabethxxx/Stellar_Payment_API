@@ -15,9 +15,9 @@ import { paymentSessionValidatorRegister } from "../lib/payment-session-validato
 // Exchange Rate Oracle Cache alert metrics live in their own registry (issue #1443)
 // and are merged into the scrape output below.
 import { exchangeRateOracleRegister } from "../lib/exchange-rate-oracle-telemetry.js";
-// Log Retention & Archival Service alert metrics live in their own registry
-// (issue #1473) and are merged into the scrape output below.
-import { logRetentionRegister } from "../lib/log-retention-telemetry.js";
+// Database Row-Level Security Service alert metrics live in their own registry (issue #1468)
+// and are merged into the scrape output below.
+import { dbRlsRegister } from "../lib/db-rls-telemetry.js";
 
 const router = express.Router();
 
@@ -26,7 +26,7 @@ const router = express.Router();
  * /metrics:
  *   get:
  *     summary: Expose Prometheus metrics
- *     description: Returns the current state of Prometheus metrics for the application, including granular payment processor, trustline manager, path payment, payment session validator, exchange-rate oracle cache and log retention metrics.
+ *     description: Returns the current state of Prometheus metrics for the application, including granular payment processor, trustline manager, path payment, payment session validator, exchange-rate oracle cache and database row-level security metrics.
  *     tags: [Monitoring]
  *     responses:
  *       200:
@@ -45,7 +45,7 @@ router.get("/metrics", async (req, res) => {
       pathPaymentRegister.metrics(),
       paymentSessionValidatorRegister.metrics(),
       exchangeRateOracleRegister.metrics(),
-      logRetentionRegister.metrics(),
+      dbRlsRegister.metrics(),
     ]);
     res.set("Content-Type", register.contentType);
     res.end(scrapes.join("\n"));

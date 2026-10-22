@@ -6,7 +6,13 @@
  *   - Circuit breaker (CLOSED → OPEN → HALF_OPEN)
  *   - Dead letter queue (DLQ) for undeliverable messages
  *   - Health snapshot
+ *
+ * Concurrency (issue #1455): the circuit breaker admits exactly one probe in
+ * HALF_OPEN. Cross-instance coordination (event delivery, DLQ drains,
+ * reconnects) lives in websocket-relay-lock.js.
  */
+
+import { relayCircuitBreakerProbeRejectedTotal } from "./websocket-relay-metrics.js";
 
 // ─── Circuit breaker states ───────────────────────────────────────────────────
 
@@ -94,6 +100,7 @@ class CircuitBreaker {
     this._failureCount = 0;
     this._openedAt = null;
     this._lastError = null;
+    this._probeInFlight = false;
   }
 
   get state() {
@@ -119,6 +126,19 @@ class CircuitBreaker {
       }
     }
 
+    // HALF_OPEN admits a single probe. Concurrent callers that arrive while it
+    // is in flight are rejected instead of all hammering a recovering upstream.
+    const isProbe = this._state === CircuitState.HALF_OPEN;
+    if (isProbe) {
+      if (this._probeInFlight) {
+        relayCircuitBreakerProbeRejectedTotal.inc();
+        const err = new Error("Circuit breaker is HALF_OPEN — probe already in flight");
+        err.circuitOpen = true;
+        throw err;
+      }
+      this._probeInFlight = true;
+    }
+
     try {
       const result = await fn();
       this._onSuccess();
@@ -126,6 +146,8 @@ class CircuitBreaker {
     } catch (err) {
       this._onFailure(err);
       throw err;
+    } finally {
+      if (isProbe) this._probeInFlight = false;
     }
   }
 
@@ -154,6 +176,7 @@ class CircuitBreaker {
       state: this._state,
       failureCount: this._failureCount,
       lastError: this._lastError ? this._lastError.message : null,
+      probeInFlight: this._probeInFlight,
     };
   }
 }

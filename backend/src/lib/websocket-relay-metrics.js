@@ -179,6 +179,39 @@ export const relayLastErrorTimestamp = new client.Gauge({
   help: "Unix timestamp of the last relay error",
 });
 
+// ─── Distributed Lock Metrics (Issue #1455) ──────────────────────────────
+
+export const relayLockAcquisitionsTotal = new client.Counter({
+  name: "relay_lock_acquisitions_total",
+  help: "Relay distributed lock acquisition attempts",
+  labelNames: ["scope", "result"], // result: acquired | contended | error
+});
+
+export const relayLockWaitDuration = new client.Histogram({
+  name: "relay_lock_wait_duration_seconds",
+  help: "Time spent waiting to acquire a relay distributed lock",
+  labelNames: ["scope"],
+  buckets: [0.001, 0.01, 0.05, 0.1, 0.5, 1, 5, 30],
+});
+
+export const relayLockHoldDuration = new client.Histogram({
+  name: "relay_lock_hold_duration_seconds",
+  help: "Time a relay distributed lock was held",
+  labelNames: ["scope"],
+  buckets: [0.01, 0.05, 0.1, 0.5, 1, 5, 15, 60],
+});
+
+export const relayLockLostTotal = new client.Counter({
+  name: "relay_lock_lost_total",
+  help: "Relay distributed locks lost before the critical section completed",
+  labelNames: ["scope"],
+});
+
+export const relayCircuitBreakerProbeRejectedTotal = new client.Counter({
+  name: "relay_circuit_breaker_probe_rejected_total",
+  help: "Calls rejected while a HALF_OPEN probe was already in flight",
+});
+
 // Register all metrics
 register.registerMetric(relayConnectionsTotal);
 register.registerMetric(relayConnectionsActive);
@@ -205,5 +238,10 @@ register.registerMetric(relayLastHeartbeatSeconds);
 register.registerMetric(relayUptime);
 register.registerMetric(relayErrorsTotal);
 register.registerMetric(relayLastErrorTimestamp);
+register.registerMetric(relayLockAcquisitionsTotal);
+register.registerMetric(relayLockWaitDuration);
+register.registerMetric(relayLockHoldDuration);
+register.registerMetric(relayLockLostTotal);
+register.registerMetric(relayCircuitBreakerProbeRejectedTotal);
 
 export { register as relayMetricsRegister };

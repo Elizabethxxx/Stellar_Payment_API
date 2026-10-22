@@ -365,4 +365,66 @@ describe("CommandPalette", () => {
     await openPalette();
     expect(baseElement.querySelector('[role="dialog"]')).toMatchSnapshot();
   });
+
+  describe("WCAG 2.1 AA Accessibility", () => {
+    it("has proper ARIA attributes for screen readers", async () => {
+      render(<CommandPalette />);
+      await openPalette();
+
+      const dialog = screen.getByRole("dialog", { name: "Command palette" });
+      expect(dialog).toHaveAttribute("aria-modal", "true");
+      expect(dialog).toHaveAttribute("aria-describedby", "command-description");
+
+      const description = screen.getByText(/Command palette dialog/i);
+      expect(description).toHaveClass("sr-only");
+
+      const input = screen.getByRole("combobox", { name: "Search commands" });
+      expect(input).toHaveAttribute("aria-expanded", "true");
+      expect(input).toHaveAttribute("aria-controls", "command-list");
+      expect(input).toHaveAttribute("aria-autocomplete", "list");
+    });
+
+    it("stores and restores previous focus on open/close", async () => {
+      const { container } = render(
+        <div>
+          <button data-testid="outside-button">Outside Button</button>
+          <CommandPalette />
+        </div>
+      );
+
+      const outsideButton = screen.getByTestId("outside-button");
+      outsideButton.focus();
+      expect(outsideButton).toHaveFocus();
+
+      await openPalette();
+      const input = screen.getByRole("combobox", { name: "Search commands" });
+      expect(input).toHaveFocus();
+
+      fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+      await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+
+      expect(outsideButton).toHaveFocus();
+    });
+
+    it("focuses input when dialog opens", async () => {
+      render(<CommandPalette />);
+      await openPalette();
+
+      const input = screen.getByRole("combobox", { name: "Search commands" });
+      expect(input).toHaveFocus();
+    });
+
+    it("has focusable elements properly identified for trap", async () => {
+      render(<CommandPalette />);
+      await openPalette();
+
+      const dialog = screen.getByRole("dialog");
+      const focusableElements = dialog.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+
+      // Should have at least the input and potentially other focusable elements
+      expect(focusableElements.length).toBeGreaterThan(0);
+    });
+  });
 });

@@ -1,0 +1,63 @@
+# Prometheus alerting rules for the SEP-0001 stellar.toml generator (issue #1458).
+#
+# Load with:   rule_files: ["docs/alerts/sep0001-generator.rules.yml"]
+# Validate:    promtool check rules docs/alerts/sep0001-generator.rules.yml
+#
+# Metric reference: SEP0001_GENERATOR_GUIDE.md ("Monitoring")
+
+groups:
+  - name: sep0001-generator
+    rules:
+      - alert: Sep0001GeneratorUnhealthy
+        expr: max(sep0001_health_state) >= 2
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: stellar.toml generation is failing
+          description: >
+            The rolling-window server error ratio is above the unhealthy
+            threshold. Wallets cannot discover TRANSFER_SERVER or verify
+            merchant accounts. See GET /health/sep0001 and logs for
+            "SEP-0001: failed to fetch merchant" / "invalid server configuration".
+
+      - alert: Sep0001GeneratorDegraded
+        expr: max(sep0001_health_state) == 1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: stellar.toml generator degraded for 15 minutes
+          description: Elevated error ratio or a refused secret SIGNING_KEY. See GET /health/sep0001.
+
+      - alert: Sep0001SecretSigningKeyRefused
+        expr: sum(increase(sep0001_rejected_fields_total{field="SIGNING_KEY",reason="secret_seed"}[15m])) > 0
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: SIGNING_KEY is configured with a secret seed
+          description: >
+            The generator refused to publish it, but the seed is present in the
+            environment. Rotate the key and set SIGNING_KEY to the public key.
+
+      - alert: Sep0001InvalidConfiguration
+        expr: sum(increase(sep0001_requests_total{outcome="generation_error"}[10m])) > 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: stellar.toml cannot be generated
+          description: >
+            Usually TRANSFER_SERVER_URL / API_BASE_URL is not https or
+            STELLAR_NETWORK_PASSPHRASE is invalid. Check logs for
+            "SEP-0001: invalid server configuration".
+
+      - alert: Sep0001MerchantDataRejected
+        expr: sum by (field, reason) (increase(sep0001_rejected_fields_total{field!="SIGNING_KEY"}[1h])) > 20
+        for: 0m
+        labels:
+          severity: info
+        annotations:
+          summary: "Many stellar.toml {{ $labels.field }} values rejected ({{ $labels.reason }})"
+          description: Merchant records contain values that are being omitted from stellar.toml.

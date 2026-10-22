@@ -1,44 +1,216 @@
-import { logger } from "./logger.js";
-import {
-  recordLogRetentionBatch,
-  recordLogRetentionRunFinish,
-  recordLogRetentionRunStart,
-} from "./log-retention-telemetry.js";
-import { withLogRetentionRetry } from "./log-retention-retry.js";
-import {
-  buildLogRetentionLockKey,
-  withLogRetentionLock,
-} from "./log-retention-lock.js";
+/**
+ * Log Retention & Archival Service.
+ *
+ * Purges operational webhook delivery logs older than the retention window,
+ * in bounded batches.
+ *
+ * Strict validation and sanitization (issue #1472):
+ *   - Every numeric setting (argument or environment variable) must be a
+ *     plain positive integer within a safe range. "30days", "1e3", "-5",
+ *     "0x10" and fractions are rejected instead of being silently coerced.
+ *   - Unknown option keys are rejected, so a typo cannot silently fall back
+ *     to the default retention.
+ *   - SQL identifiers are checked against an allow-list before they are
+ *     interpolated; values always go through bind parameters.
+ *   - The driver's row counts are validated, and a hard batch cap stops a
+ *     misbehaving driver from looping forever.
+ *   - Log lines and returned errors are scrubbed of connection strings and
+ *     credentials before they are written.
+ */
 
 const DEFAULT_RETENTION_DAYS = 30;
 const DEFAULT_BATCH_SIZE = 1000;
 const DEFAULT_MAX_DURATION_MS = 5 * 60 * 1000;
+const DEFAULT_MAX_BATCHES = 100_000;
+
+/** Inclusive bounds for each setting. */
+const LIMITS = Object.freeze({
+  retentionDays: { min: 1, max: 3650, env: "LOG_RETENTION_DAYS" },
+  batchSize: { min: 1, max: 50_000, env: "LOG_PURGE_BATCH_SIZE" },
+  maxDurationMs: { min: 1000, max: 24 * 60 * 60 * 1000, env: "LOG_PURGE_MAX_DURATION_MS" },
+  maxBatches: { min: 1, max: 10_000_000, env: "LOG_PURGE_MAX_BATCHES" },
+});
+
+const ALLOWED_OPTIONS = new Set(["pool", "retentionDays", "batchSize", "maxDurationMs", "maxBatches", "logger"]);
 
 const WEBHOOK_LOGS_TABLE = "webhook_delivery_logs";
 const WEBHOOK_LOGS_TIMESTAMP_COLUMN = "timestamp";
 
-function parsePositiveInteger(value, fallback) {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new Error(`Expected positive integer value but got: ${value}`);
+/** Tables and columns this service is allowed to purge. */
+const PURGEABLE_TARGETS = Object.freeze({
+  [WEBHOOK_LOGS_TABLE]: new Set([WEBHOOK_LOGS_TIMESTAMP_COLUMN]),
+});
+
+const IDENTIFIER_PATTERN = /^[a-z_][a-z0-9_]{0,62}$/;
+const STRICT_INTEGER_PATTERN = /^\d{1,15}$/;
+
+export class LogRetentionValidationError extends Error {
+  constructor(message, field) {
+    super(message);
+    this.name = "LogRetentionValidationError";
+    this.field = field;
+  }
+}
+
+/**
+ * Parse a strictly positive integer setting.
+ *
+ * Backwards compatible with the old `(value, fallback)` form: an empty value
+ * returns the fallback. Anything else must be a plain base-10 integer (or a
+ * safe integer number) within `[min, max]`.
+ *
+ * @param {unknown} value
+ * @param {number} fallback
+ * @param {{ name?: string, min?: number, max?: number }} [opts]
+ * @returns {number}
+ * @throws {LogRetentionValidationError}
+ */
+function parsePositiveInteger(value, fallback, { name = "value", min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+  if (value === undefined || value === null || value === "") return fallback;
+
+  let parsed;
+  if (typeof value === "number") {
+    parsed = Number.isSafeInteger(value) ? value : NaN;
+  } else if (typeof value === "string" && STRICT_INTEGER_PATTERN.test(value.trim())) {
+    parsed = Number(value.trim());
+  } else {
+    parsed = NaN;
+  }
+
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new LogRetentionValidationError(
+      `Expected positive integer value for ${name} but got: ${describeValue(value)}`,
+      name,
+    );
+  }
+  if (parsed < min || parsed > max) {
+    throw new LogRetentionValidationError(
+      `${name} must be between ${min} and ${max}, got ${parsed}`,
+      name,
+    );
   }
   return parsed;
 }
 
+/** Short, safe description of a rejected value for error messages. */
+function describeValue(value) {
+  if (typeof value === "string") {
+    const printable = value.replace(/[^\x20-\x7e]/g, "?");
+    return JSON.stringify(printable.length > 32 ? `${printable.slice(0, 32)}...` : printable);
+  }
+  if (typeof value === "number") return String(value);
+  return `<${value === null ? "null" : typeof value}>`;
+}
+
 /**
- * Thrown when a pre-purge safety check fails. Never retried (issue #1474):
- * a purge that is unsafe to run must not be forced through by repetition.
+ * Resolve one setting from an explicit option or its environment variable.
+ * @param {keyof typeof LIMITS} key
  */
-class LogRetentionSafetyError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = "LogRetentionSafetyError";
-    this.retryable = false;
+function resolveSetting(key, explicit, fallback, env = process.env) {
+  const limit = LIMITS[key];
+  const source = explicit !== undefined ? explicit : env[limit.env];
+  const name = explicit !== undefined ? key : limit.env;
+  return parsePositiveInteger(source, fallback, { name, min: limit.min, max: limit.max });
+}
+
+/**
+ * Validate and normalise purge options.
+ *
+ * @param {object} options
+ * @param {NodeJS.ProcessEnv} [env]
+ * @returns {{ pool: { query: Function }, retentionDays: number, batchSize: number, maxDurationMs: number, maxBatches: number, logger: Console }}
+ * @throws {LogRetentionValidationError}
+ */
+function validatePurgeOptions(options, env = process.env) {
+  if (options === null || typeof options !== "object" || Array.isArray(options)) {
+    throw new LogRetentionValidationError("purgeWebhookLogs options must be an object", "options");
+  }
+  const unknown = Object.keys(options).filter((key) => !ALLOWED_OPTIONS.has(key));
+  if (unknown.length > 0) {
+    throw new LogRetentionValidationError(
+      `Unknown purgeWebhookLogs option(s): ${unknown.map((k) => describeValue(k)).join(", ")}`,
+      unknown[0],
+    );
+  }
+
+  const { pool } = options;
+  if (!pool) {
+    throw new Error("A pg pool/client is required for purgeWebhookLogs.");
+  }
+  if (typeof pool.query !== "function") {
+    throw new LogRetentionValidationError("pool must expose a query() function", "pool");
+  }
+
+  const logger = options.logger ?? console;
+  if (typeof logger.log !== "function" || typeof logger.error !== "function") {
+    throw new LogRetentionValidationError("logger must expose log() and error()", "logger");
+  }
+
+  return {
+    pool,
+    logger,
+    retentionDays: resolveSetting("retentionDays", options.retentionDays, DEFAULT_RETENTION_DAYS, env),
+    batchSize: resolveSetting("batchSize", options.batchSize, DEFAULT_BATCH_SIZE, env),
+    maxDurationMs: resolveSetting("maxDurationMs", options.maxDurationMs, DEFAULT_MAX_DURATION_MS, env),
+    maxBatches: resolveSetting("maxBatches", options.maxBatches, DEFAULT_MAX_BATCHES, env),
+  };
+}
+
+/**
+ * Allow-list check for an identifier that will be interpolated into SQL.
+ * @throws {LogRetentionValidationError}
+ */
+function assertPurgeTarget(tableName, timestampColumn) {
+  if (!IDENTIFIER_PATTERN.test(tableName) || !IDENTIFIER_PATTERN.test(timestampColumn)) {
+    throw new LogRetentionValidationError("Purge target contains an invalid SQL identifier", "tableName");
+  }
+  if (!PURGEABLE_TARGETS[tableName]?.has(timestampColumn)) {
+    throw new LogRetentionValidationError(
+      `${tableName}.${timestampColumn} is not an allowed purge target`,
+      "tableName",
+    );
   }
 }
 
-async function validatePurgeSafety({ pool, tableName, timestampColumn, retry = {} }) {
+const SECRET_PATTERNS = [
+  // postgres://user:password@host/db and similar URLs with credentials
+  [/\b([a-z][a-z0-9+.-]*:\/\/)[^\s:@/]+:[^\s@/]+@/gi, "$1***:***@"],
+  [/\b(password|passwd|pwd|secret|token|api[_-]?key)\s*[=:]\s*("[^"]*"|'[^']*'|[^\s,;]+)/gi, "$1=***"],
+  [/\bBearer\s+[A-Za-z0-9._~+/-]+=*/g, "Bearer ***"],
+];
+
+/**
+ * Scrub credentials from a message before it is logged. Also strips control
+ * characters (log injection) and caps the length.
+ *
+ * @param {unknown} message
+ * @returns {string}
+ */
+function sanitizeLogMessage(message) {
+  let text = typeof message === "string" ? message : message instanceof Error ? message.message : String(message);
+  for (const [pattern, replacement] of SECRET_PATTERNS) {
+    text = text.replace(pattern, replacement);
+  }
+  // eslint-disable-next-line no-control-regex
+  text = text.replace(/[\u0000-\u001f\u007f]+/g, " ").trim();
+  return text.length > 500 ? `${text.slice(0, 500)}...` : text;
+}
+
+/** Validate a driver result's row count. */
+function readRowCount(result, batchSize) {
+  const count = result?.rowCount ?? 0;
+  if (!Number.isSafeInteger(count) || count < 0 || count > batchSize) {
+    throw new LogRetentionValidationError(
+      `Unexpected rowCount from database driver: ${describeValue(count)}`,
+      "rowCount",
+    );
+  }
+  return count;
+}
+
+async function validatePurgeSafety({ pool, tableName, timestampColumn }) {
+  assertPurgeTarget(tableName, timestampColumn);
+
   const indexQuery = `
     SELECT 1
     FROM pg_indexes
@@ -47,12 +219,9 @@ async function validatePurgeSafety({ pool, tableName, timestampColumn, retry = {
       AND indexdef ILIKE '%' || $2 || '%'
     LIMIT 1
   `;
-  const indexResult = await withLogRetentionRetry(
-    () => pool.query(indexQuery, [tableName, timestampColumn]),
-    { ...retry, label: "log-retention-index-check" },
-  );
-  if (indexResult.rowCount === 0) {
-    throw new LogRetentionSafetyError(
+  const indexResult = await pool.query(indexQuery, [tableName, timestampColumn]);
+  if (!indexResult || indexResult.rowCount === 0) {
+    throw new Error(
       `Missing index for ${tableName}.${timestampColumn}; aborting purge to avoid sequential scans.`,
     );
   }
@@ -64,38 +233,17 @@ async function validatePurgeSafety({ pool, tableName, timestampColumn, retry = {
       AND contype = 'f'
     LIMIT 1
   `;
-  const fkResult = await withLogRetentionRetry(
-    () => pool.query(fkQuery, [tableName]),
-    { ...retry, label: "log-retention-fk-check" },
-  );
-  if (fkResult.rowCount > 0) {
-    throw new LogRetentionSafetyError(
-      `Table ${tableName} is referenced by foreign keys (example: ${fkResult.rows[0].conname}); aborting purge.`,
+  const fkResult = await pool.query(fkQuery, [tableName]);
+  if (fkResult?.rowCount > 0) {
+    const constraint = String(fkResult.rows?.[0]?.conname ?? "unknown");
+    throw new Error(
+      `Table ${tableName} is referenced by foreign keys (example: ${sanitizeLogMessage(constraint)}); aborting purge.`,
     );
   }
 }
 
-async function purgeWebhookLogs({
-  pool,
-  retentionDays = parsePositiveInteger(
-    process.env.LOG_RETENTION_DAYS,
-    DEFAULT_RETENTION_DAYS,
-  ),
-  batchSize = parsePositiveInteger(
-    process.env.LOG_PURGE_BATCH_SIZE,
-    DEFAULT_BATCH_SIZE,
-  ),
-  maxDurationMs = parsePositiveInteger(
-    process.env.LOG_PURGE_MAX_DURATION_MS,
-    DEFAULT_MAX_DURATION_MS,
-  ),
-  // Retry tuning and test seams (issue #1474): maxAttempts, baseDelayMs,
-  // maxDelayMs, sleep, random. Defaults come from LOG_PURGE_RETRY_* env vars.
-  retry = {},
-} = {}) {
-  if (!pool) {
-    throw new Error("A pg pool/client is required for purgeWebhookLogs.");
-  }
+async function purgeWebhookLogs(options = {}) {
+  const { pool, logger, retentionDays, batchSize, maxDurationMs, maxBatches } = validatePurgeOptions(options);
 
   const startedAt = Date.now();
   const tableName = WEBHOOK_LOGS_TABLE;
@@ -109,94 +257,58 @@ async function purgeWebhookLogs({
 
   recordLogRetentionRunStart();
   let totalDeleted = 0;
+  let deletedInBatch = 0;
   let batches = 0;
-  try {
-    await validatePurgeSafety({ pool, tableName, timestampColumn, retry: retryOptions });
 
-    // Compliance warning: payment audit records may require longer retention by policy/regulation.
-    // Confirm this table contains operational delivery telemetry only before enforcing 30-day retention.
-    let deletedInBatch = 0;
-
-    do {
-      // SKIP LOCKED (issue #1475): rows another purge (or any writer) is
-      // holding are left for a later batch instead of blocking on them, so
-      // concurrent callers never wait on each other or delete a row twice.
-      const deleteQuery = `
-        WITH rows_to_delete AS (
-          SELECT id
-          FROM ${tableName}
-          WHERE ${timestampColumn} < NOW() - make_interval(days => $1::int)
-          ORDER BY ${timestampColumn} ASC
-          LIMIT $2
-          FOR UPDATE SKIP LOCKED
-        )
-        DELETE FROM ${tableName} t
-        USING rows_to_delete d
-        WHERE t.id = d.id
-        RETURNING t.id
-      `;
-
-      // Each batch is idempotent ("delete old rows"), so retrying it after a
-      // transient failure cannot delete anything that should be kept.
-      const deleteResult = await withLogRetentionRetry(
-        () => pool.query(deleteQuery, [retentionDays, batchSize]),
-        { ...retryOptions, label: "log-retention-delete-batch" },
+  do {
+    if (batches >= maxBatches) {
+      throw new LogRetentionValidationError(
+        `Purge stopped after ${maxBatches} batches (${totalDeleted} rows deleted); raise LOG_PURGE_MAX_BATCHES if this is expected.`,
+        "maxBatches",
       );
-      deletedInBatch = deleteResult.rowCount ?? 0;
-      totalDeleted += deletedInBatch;
-      batches += 1;
-      recordLogRetentionBatch(tableName, deletedInBatch);
-    } while (deletedInBatch > 0);
-  } catch (err) {
-    const durationMs = Date.now() - startedAt;
-    recordLogRetentionRunFinish({
-      outcome: "failure",
-      durationMs,
-      deletedRows: totalDeleted,
-      durationExceeded: durationMs > maxDurationMs,
-    });
-    logger.error(
-      {
-        table: tableName,
-        deletedRows: totalDeleted,
-        batches,
-        durationMs,
-        attempts: err?.retryAttempts,
-        code: err?.code,
-        err: err?.message,
-      },
-      "Log retention purge failed",
-    );
-    throw err;
-  }
+    }
+
+    const deleteQuery = `
+      WITH rows_to_delete AS (
+        SELECT id
+        FROM ${tableName}
+        WHERE ${timestampColumn} < NOW() - make_interval(days => $1::int)
+        ORDER BY ${timestampColumn} ASC
+        LIMIT $2
+      )
+      DELETE FROM ${tableName} t
+      USING rows_to_delete d
+      WHERE t.id = d.id
+      RETURNING t.id
+    `;
+
+    const deleteResult = await pool.query(deleteQuery, [retentionDays, batchSize]);
+    deletedInBatch = readRowCount(deleteResult, batchSize);
+    totalDeleted += deletedInBatch;
+    batches += 1;
+  } while (deletedInBatch > 0);
 
   const durationMs = Date.now() - startedAt;
   const durationSec = (durationMs / 1000).toFixed(2);
-  const durationExceeded = durationMs > maxDurationMs;
-  console.log(
+  logger.log(
     `[log-retention] Purge complete for ${tableName}: deleted_rows=${totalDeleted} duration_ms=${durationMs} duration_sec=${durationSec}`,
   );
 
-  if (durationExceeded) {
-    console.error(
+  if (durationMs > maxDurationMs) {
+    logger.error(
       `[ALERT][log-retention] Purge exceeded max duration (${maxDurationMs}ms): actual=${durationMs}ms`,
     );
   }
 
-  recordLogRetentionRunFinish({
-    outcome: "success",
-    durationMs,
-    deletedRows: totalDeleted,
-    durationExceeded,
-  });
-
-  return {
+  // Only known, non-sensitive fields are returned.
+  return Object.freeze({
     tableName,
     retentionDays,
     batchSize,
     totalDeleted,
     durationMs,
-  };
+    batches,
+  });
 }
 
 /**
@@ -243,7 +355,11 @@ export {
   runLogRetentionPurge,
   LogRetentionSafetyError,
   parsePositiveInteger,
+  validatePurgeOptions,
+  sanitizeLogMessage,
+  assertPurgeTarget,
   DEFAULT_RETENTION_DAYS,
   DEFAULT_BATCH_SIZE,
   DEFAULT_MAX_DURATION_MS,
+  DEFAULT_MAX_BATCHES,
 };

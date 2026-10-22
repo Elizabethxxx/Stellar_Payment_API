@@ -6,9 +6,22 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   descriptionId?: string;
+  /**
+   * Element to focus when the modal opens. Defaults to the dialog itself.
+   * Destructive dialogs use it to start on the safe action or the input a
+   * keyboard user needs next (#1571).
+   */
+  initialFocusRef?: React.RefObject<HTMLElement | null>;
 }
 
-export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, descriptionId }) => {
+export const Modal: React.FC<ModalProps> = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+  descriptionId,
+  initialFocusRef,
+}) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
 
@@ -34,7 +47,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
 
     if (!dialog) return;
 
-    dialog.focus();
+    (initialFocusRef?.current ?? dialog).focus();
 
     const handleTabKey = (event: KeyboardEvent) => {
       if (event.key !== "Tab") return;
@@ -69,6 +82,9 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
       document.removeEventListener("keydown", handleTabKey);
       previousActiveElement?.focus();
     };
+    // initialFocusRef is read once, when the modal opens; later changes to the
+    // ref must not re-run this effect and steal focus.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   if (!isOpen) return null;
