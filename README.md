@@ -2,7 +2,7 @@
 
 PLUTO is a dual-mode payment infrastructure built on Stellar that bridges the gap between traditional Web3 e-commerce (human-driven checkouts via Freighter) and the emerging headless machine economy (AI agents interacting autonomously via the x402 Payment Required protocol).
 
-As AI agents become more capable and autonomous, they need a native way to pay for API access, computational resources, and premium data without human intervention. PLUTO provides a robust framework that enables developers and merchants to seamlessly monetize API endpoints for AI agents natively on the Stellar blockchain.
+As AI agents become more capable and autonomous, they need a native way to pay for API access, computational resources, and premium data without human intervention. PLUTO provides a robust framework that enables developers and merchants to seamlessly monetize API endpoints for AI agents natively on the Stellar blockchain
 
 ## How it works (x402 Protocol)
 
