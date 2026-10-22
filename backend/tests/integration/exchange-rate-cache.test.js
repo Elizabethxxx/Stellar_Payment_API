@@ -31,7 +31,7 @@ import { exchangeRateCacheCoalescedRequests } from '../../src/lib/path-payment-m
 import { createFakeRedis } from '../helpers/fake-redis.js';
 
 const USDC_ISSUER = 'GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5';
-const SOURCE_ACCOUNT = 'GA5XIGA5C7FBPTVQ3CWHKNC7D2ZBHB24G3KUJG5WZ6S4EYWSSBFVL45T';
+const SOURCE_ACCOUNT = 'GDVWLHAZ3SC733EPYW7E27HFXIO74XSG66D7Y3J2Y5MYVNGV6Z46E6DD';
 
 const payments = vi.hoisted(() => new Map());
 

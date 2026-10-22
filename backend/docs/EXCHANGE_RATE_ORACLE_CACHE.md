@@ -254,3 +254,11 @@ npx vitest run src/lib/exchange-rate-oracle-telemetry.test.js \
                tests/integration/exchange-rate-cache.test.js
 npm run test:load -- exchange-rate-cache-stress
 ```
+
+## Payload sanitization and strict validation (#1442)
+
+`src/lib/exchange-rate-oracle-sanitizer.js` guards every trust boundary of the cache:
+
+- `sanitizeQuoteRequest()` validates and canonicalises request parameters before they form a cache key or reach Horizon: asset codes (1-12 alphanumeric, upper-cased, XLM is native), issuers and source accounts (full StrKey checksum), amounts (positive, at most 7 decimals, within int64 stroops) and slippage (0 to 0.5). Failures are `ExchangeRateValidationError` (400, `EXCHANGE_RATE_INVALID_PARAMS`, `retryable: false`); the quote route returns `{ error, field }`.
+- `sanitizeQuote()` rebuilds every quote from an allow-list of fields. It runs on Horizon results before caching and on entries read from the shared Redis store. Unknown fields and prototype keys are dropped; a malformed entry is a cache miss, and a malformed Horizon result is a non-retryable 502.
+- Invalidation uses the same canonical key and never throws on malformed input.

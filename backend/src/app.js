@@ -51,6 +51,7 @@ import { getPaymentSessionValidatorHealth } from "./lib/payment-session-validato
 import { getExchangeRateOracleHealth } from "./lib/exchange-rate-oracle-telemetry.js";
 import { getDatabaseRowLevelSecurityHealth } from "./lib/db-rls-telemetry.js";
 import { configureExchangeRateCoordination } from "./services/exchangeRateService.js";
+import { configureHorizonRetryCoordination } from "./lib/stellar/horizon-client/retry-coordinator.js";
 
 export async function createApp({ redisClient }) {
   const app = express();
@@ -59,6 +60,10 @@ export async function createApp({ redisClient }) {
   // Cross-instance exchange-rate quote coordination (issue #1445). Without
   // Redis the cache still coalesces concurrent misses within this process.
   configureExchangeRateCoordination({ redisClient: redisAvailable ? redisClient : null });
+
+  // Cluster-wide Horizon retry slots and rate-limit cooldown (issue #1440).
+  // Without Redis each process still limits its own retries.
+  configureHorizonRetryCoordination({ redisClient: redisAvailable ? redisClient : null });
 
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
