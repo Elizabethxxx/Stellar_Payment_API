@@ -14,7 +14,7 @@ describe("generateStellarToml", () => {
       business_name: "Test Merchant",
       email: "merchant@example.com",
       notification_email: "notify@example.com",
-      recipient: "GBUQWP3BOUZX34ULNQG23RQ6F4YUSXHTQSXUSMIQSTBE2BRUY4DQAT2B",
+      recipient: "GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57",
       branding_config: {},
     };
 
@@ -32,7 +32,7 @@ describe("generateStellarToml", () => {
       business_name: "Test Merchant",
       email: "merchant@example.com",
       notification_email: "notify@example.com",
-      recipient: "GBUQWP3BOUZX34ULNQG23RQ6F4YUSXHTQSXUSMIQSTBE2BRUY4DQAT2B",
+      recipient: "GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57",
       branding_config: {},
     };
 
@@ -47,7 +47,7 @@ describe("generateStellarToml", () => {
       business_name: "Test Merchant",
       email: "merchant@example.com",
       notification_email: "notify@example.com",
-      recipient: "GBUQWP3BOUZX34ULNQG23RQ6F4YUSXHTQSXUSMIQSTBE2BRUY4DQAT2B",
+      recipient: "GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57",
       branding_config: {
         homepage: "https://example.com",
         logo_url: "https://example.com/logo.png",
@@ -65,7 +65,7 @@ describe("generateStellarToml", () => {
       business_name: 'Test "Merchant" with\nnewline',
       email: "merchant@example.com",
       notification_email: "notify@example.com",
-      recipient: "GBUQWP3BOUZX34ULNQG23RQ6F4YUSXHTQSXUSMIQSTBE2BRUY4DQAT2B",
+      recipient: "GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57",
       branding_config: {},
     };
 
