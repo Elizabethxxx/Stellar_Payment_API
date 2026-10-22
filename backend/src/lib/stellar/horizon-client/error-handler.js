@@ -11,6 +11,7 @@ import {
   RETRYABLE_ERROR_STATUS_CODES,
   RETRYABLE_MESSAGE_PATTERNS,
 } from "./constants.js";
+import { sanitizeContext, sanitizeErrorDetail, sanitizeHorizonUrl } from "./sanitizer.js";
 
 /**
  * Extract HTTP status from error
@@ -77,13 +78,14 @@ export function isRetryableError(err) {
 }
 
 /**
- * Wrap Horizon errors into descriptive error objects
+ * Wrap Horizon errors into descriptive error objects.
+ *
+ * Context, Horizon error detail and the Horizon URL are sanitized (#1437) so
+ * secrets, URL credentials and control characters never reach API clients.
  */
 export function handleError(err, operation, context, horizonUrl) {
   const status = getErrorStatus(err);
-  const contextStr = Object.entries(context)
-    .map(([k, v]) => `${k}=${v}`)
-    .join(", ");
+  const contextStr = formatContext(context);
 
   if (status === 429) {
     const error = new Error(
@@ -104,7 +106,7 @@ export function handleError(err, operation, context, horizonUrl) {
   }
 
   if (status && status >= 400 && status < 500) {
-    const detail = err?.response?.data?.detail || err.message;
+    const detail = sanitizeErrorDetail(err?.response?.data?.detail || err?.message);
     const error = new Error(`Horizon request error (${status}): ${detail}`);
     error.status = status;
     error.operation = operation;
@@ -122,7 +124,7 @@ export function handleError(err, operation, context, horizonUrl) {
 
   // Network / connection errors
   const error = new Error(
-    `Unable to connect to Horizon (${horizonUrl}): ${err.message}`,
+    `Unable to connect to Horizon (${sanitizeHorizonUrl(horizonUrl)}): ${sanitizeErrorDetail(err?.message)}`,
   );
   error.status = 502;
   error.operation = operation;
@@ -133,7 +135,7 @@ export function handleError(err, operation, context, horizonUrl) {
  * Format context object for logging
  */
 export function formatContext(context) {
-  return Object.entries(context)
+  return Object.entries(sanitizeContext(context))
     .map(([k, v]) => `${k}=${v}`)
     .join(", ");
 }

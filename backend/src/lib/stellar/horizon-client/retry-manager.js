@@ -116,6 +116,9 @@ export class RetryManager {
       new HorizonRetryCoordinator({ ...(opts.coordination ?? {}), horizonUrl: this.horizonUrl });
 
     this.concurrentOperations = 0;
+    this.unhealthyAfterFailures = resolveUnhealthyThreshold(options.unhealthyAfterFailures);
+    this._now = typeof options.now === "function" ? options.now : () => Date.now();
+    this.operationHealth = new Map();
   }
 
   /**
@@ -341,6 +344,116 @@ export class RetryManager {
       }
     }
     return safe;
+  }
+
+  /**
+   * Get (or create) the health entry for an operation.
+   * @private
+   */
+  _healthEntry(operationName) {
+    let entry = this.operationHealth.get(operationName);
+    if (!entry) {
+      if (this.operationHealth.size >= MAX_TRACKED_OPERATIONS) {
+        return null;
+      }
+      entry = {
+        consecutiveFailures: 0,
+        totalSuccesses: 0,
+        totalFailures: 0,
+        lastSuccessAt: null,
+        lastFailureAt: null,
+        lastErrorType: null,
+      };
+      this.operationHealth.set(operationName, entry);
+    }
+    return entry;
+  }
+
+  /**
+   * Horizon responded (success or a non-retryable client error).
+   * @private
+   */
+  _markReachable(operationName, err) {
+    const entry = this._healthEntry(operationName);
+    if (!entry) return;
+    const now = this._now();
+    entry.consecutiveFailures = 0;
+    if (err) {
+      entry.lastErrorType = classifyError(err);
+    } else {
+      entry.totalSuccesses += 1;
+      entry.lastSuccessAt = now;
+      horizonClientLastSuccessTimestamp.set({ operation: operationName }, Math.floor(now / 1000));
+    }
+    horizonClientConsecutiveFailures.set({ operation: operationName }, 0);
+    this._publishHealthState();
+  }
+
+  /**
+   * Horizon was unreachable / failing after all retries.
+   * @private
+   */
+  _markFailure(operationName, err) {
+    const entry = this._healthEntry(operationName);
+    if (!entry) return;
+    entry.consecutiveFailures += 1;
+    entry.totalFailures += 1;
+    entry.lastFailureAt = this._now();
+    entry.lastErrorType = classifyError(err);
+    horizonClientConsecutiveFailures.set({ operation: operationName }, entry.consecutiveFailures);
+    this._publishHealthState();
+    if (entry.consecutiveFailures === this.unhealthyAfterFailures) {
+      logger.error(
+        {
+          operation: operationName,
+          consecutiveFailures: entry.consecutiveFailures,
+          errorType: entry.lastErrorType,
+        },
+        "Horizon client: operation is unhealthy after consecutive failures"
+      );
+    }
+  }
+
+  /** @private */
+  _statusFor(entry) {
+    if (entry.consecutiveFailures === 0) return HealthStatus.HEALTHY;
+    if (entry.consecutiveFailures >= this.unhealthyAfterFailures) return HealthStatus.UNHEALTHY;
+    return HealthStatus.DEGRADED;
+  }
+
+  /** @private */
+  _publishHealthState() {
+    horizonClientHealthState.set(HEALTH_STATE_VALUE[this.getHealth().status]);
+  }
+
+  /**
+   * Health telemetry snapshot for health endpoints and alert context.
+   *
+   * @returns {{ status: string, unhealthyAfterFailures: number, concurrentOperations: number,
+   *   operations: Record<string, object> }}
+   */
+  getHealth() {
+    const operations = {};
+    let worst = HealthStatus.HEALTHY;
+    for (const [name, entry] of this.operationHealth) {
+      const status = this._statusFor(entry);
+      if (HEALTH_STATE_VALUE[status] > HEALTH_STATE_VALUE[worst]) worst = status;
+      operations[name] = {
+        status,
+        consecutiveFailures: entry.consecutiveFailures,
+        totalSuccesses: entry.totalSuccesses,
+        totalFailures: entry.totalFailures,
+        lastSuccessAt: entry.lastSuccessAt ? new Date(entry.lastSuccessAt).toISOString() : null,
+        lastFailureAt: entry.lastFailureAt ? new Date(entry.lastFailureAt).toISOString() : null,
+        lastErrorType: entry.lastErrorType,
+      };
+    }
+    return {
+      status: worst,
+      unhealthyAfterFailures: this.unhealthyAfterFailures,
+      concurrentOperations: this.concurrentOperations,
+      operations,
+    };
   }
 
   /**

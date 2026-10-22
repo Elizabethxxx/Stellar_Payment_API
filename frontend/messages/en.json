@@ -33,7 +33,8 @@
     "options": {
       "en": "English",
       "es": "Espanol",
-      "pt": "Portugues"
+      "pt": "Portugues",
+      "fr": "Francais"
     }
   },
   "nav": {
@@ -815,5 +816,8 @@
       "fromSyncLabel": "Updating start date…",
       "toSyncLabel": "Updating end date…"
     }
+  },
+  "dashboardShell": {
+    "openNavigationMenu": "Open navigation menu"
   }
 }

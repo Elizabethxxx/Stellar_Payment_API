@@ -33,7 +33,8 @@
     "options": {
       "en": "English",
       "es": "Espanol",
-      "pt": "Portugues"
+      "pt": "Portugues",
+      "fr": "Frances"
     }
   },
   "nav": {
@@ -210,6 +211,11 @@
   "paymentsPage": {
     "title": "Historial de pagos",
     "description": "Supervisa todas las transacciones entrantes y su estado de verificacion."
+  },
+  "portfolioChart": {
+    "valueTitle": "Valor del portafolio",
+    "allocation": "Distribución",
+    "trend": "Tendencia"
   },
   "recentPayments": {
     "missingApiKey": "No se encontro la clave API. Registrate o inicia sesion.",
@@ -583,6 +589,23 @@
     "successDescription": "Tu verificacion KYC ha sido enviada y esta en revision.",
     "dash": "—"
   },
+  "network": {
+    "status": "Estado de la red",
+    "refresh": "Comprobar el estado de la red",
+    "latency": "Latencia",
+    "connection": "Conexión",
+    "error": "Error",
+    "lastChecked": "Última comprobación",
+    "online": "En línea",
+    "offline": "Sin conexión",
+    "slow": "Lenta",
+    "checking": "Comprobando...",
+    "connectionQuality": "Calidad de la conexión",
+    "excellent": "Excelente",
+    "good": "Buena",
+    "fair": "Regular",
+    "poor": "Deficiente"
+  },
   "darkModeTheme": {
     "loading": "Cargando configuracion del tema",
     "errorCleared": "Error eliminado. Intentando cambiar el tema.",
@@ -793,5 +816,8 @@
       "fromSyncLabel": "Actualizando fecha de inicio…",
       "toSyncLabel": "Actualizando fecha de fin…"
     }
+  },
+  "dashboardShell": {
+    "openNavigationMenu": "Abrir menú de navegación"
   }
 }

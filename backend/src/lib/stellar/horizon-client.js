@@ -227,4 +227,4 @@ export class HorizonClient {
   close() {
     horizonClientConnections.dec();
   }
-}
+}

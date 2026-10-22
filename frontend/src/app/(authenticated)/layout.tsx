@@ -11,6 +11,7 @@ import SupportOverlay from "@/components/SupportOverlay";
 import UserNav from "@/components/UserNav";
 import { useHydrateMerchantStore } from "@/lib/merchant-store";
 import { motion } from "framer-motion";
+import { useTranslations } from "next-intl";
 
 /**
  * #1189 — Bundle size optimisation:
@@ -29,6 +30,7 @@ export default function AuthenticatedLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const t = useTranslations("dashboardShell");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useHydrateMerchantStore();
@@ -50,7 +52,7 @@ export default function AuthenticatedLayout({
                   type="button"
                   onClick={() => setMobileSidebarOpen(true)}
                   className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-[#E8E8E8] bg-white text-[#6B6B6B] transition-all hover:border-[#0A0A0A] hover:bg-[#F9F9F9] hover:text-[#0A0A0A] lg:hidden"
-                  aria-label="Open navigation menu"
+                  aria-label={t("openNavigationMenu")}
                   aria-controls="dashboard-sidebar-mobile"
                   aria-expanded={mobileSidebarOpen}
                 >
