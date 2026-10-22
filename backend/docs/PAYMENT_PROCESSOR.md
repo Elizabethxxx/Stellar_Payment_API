@@ -110,7 +110,35 @@ Include the printed percentile tables in PRs touching the processor.
 
 ---
 
-## 5. Security notes
+## 5. Telemetry integration and stress suite (#1481)
+
+| Suite | File | Run |
+|---|---|---|
+| Integration | `tests/integration/payment-processor-telemetry.test.js` | `npx vitest run tests/integration/payment-processor-telemetry.test.js` |
+| Stress | `load-tests/payment-processor-telemetry-stress.test.js` | `npm run test:load -- payment-processor-telemetry` |
+
+The integration suite scrapes the real `/metrics` route and parses the
+exposition text a Prometheus server would receive. It checks that every
+`payment_processor_*` series is merged into the scrape, that counts are
+exact per asset and outcome, that histograms are consistent (cumulative
+buckets, `+Inf` equals `_count`, `_sum` matches), that concurrent scrapes
+during writes never fail, and that the output always parses.
+
+The stress suite checks there are no lost increments (100 concurrent workers
+x 1,000 events), that cardinality stays bounded under 50,000 adversarial
+asset values, that histogram count and sum stay exact over 100,000
+observations, and that scrape p95 latency stays under 100 ms while writes
+continue.
+
+**Fix found by the suite:** session creation used `body.asset` straight from
+the request as the `asset` label, so a client could create one time series
+per arbitrary string (including on `validation_failed`). Labels now go
+through `toAssetLabel()`: well-formed asset codes are upper-cased, anything
+else becomes `invalid`, and a missing value becomes `unknown`.
+
+---
+
+## 6. Security notes
 
 - API keys are hashed for rate-limit bucketing (`getCreatePaymentRateLimitKey`)
 - Metadata keys must match `^[a-zA-Z0-9_-]{1,64}$`; unsafe keys never reach SQL
@@ -118,3 +146,4 @@ Include the printed percentile tables in PRs touching the processor.
 - Verification uses a DB-level conditional update so a `tx_hash` can only be
   claimed once even under concurrent confirmation attempts
 - Signature verification failure keeps payments pending (fail-closed)
+- Metric labels never carry raw client input; `asset` is bounded by `toAssetLabel()`
