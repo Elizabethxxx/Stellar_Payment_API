@@ -1172,3 +1172,26 @@ export const auditLogQueueWaitDuration = new client.Histogram({
 
 register.registerMetric(auditLogQueueDepth);
 register.registerMetric(auditLogQueueWaitDuration);
+
+// ── Idempotency Key Manager Metrics (Issue #1465) ───────────────────────────
+export const idempotencyRequestsTotal = new client.Counter({
+  name: "idempotency_requests_total",
+  help: "Total number of requests processed by the idempotency middleware",
+  labelNames: ["result"], // acquired, replay, payload_mismatch, in_flight_conflict, bypassed, redis_error
+});
+
+export const idempotencyLockDuration = new client.Histogram({
+  name: "idempotency_lock_duration_seconds",
+  help: "Time a request held the idempotency lock before completing or releasing it",
+  labelNames: ["outcome"], // completed, released, orphaned
+  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60],
+});
+
+export const idempotencyOrphanedCompletionsTotal = new client.Counter({
+  name: "idempotency_orphaned_completions_total",
+  help: "Total number of responses not cached because the idempotency lock was lost mid-flight",
+});
+
+register.registerMetric(idempotencyRequestsTotal);
+register.registerMetric(idempotencyLockDuration);
+register.registerMetric(idempotencyOrphanedCompletionsTotal);

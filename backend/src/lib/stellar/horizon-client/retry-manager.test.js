@@ -1,232 +1,257 @@
 /**
- * Retry Manager tests
- *
- * - Strict validation and payload sanitization (#1437)
- * - Prometheus alert metrics and health telemetry (#1438)
+ * Unit tests for the Horizon Client Retry Manager:
+ *   - automated retry with exponential backoff (issue #1439)
+ *   - concurrency control and distributed retry coordination (issue #1440)
  */
 
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../logger.js', () => ({
-  logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
+  logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
+import { RetryManager, RETRY_STOP_REASONS, createRetryManager } from './retry-manager.js';
+import { HorizonRetryCoordinator } from './retry-coordinator.js';
+import { ConcurrencyLimiter } from './concurrency-limiter.js';
+import { RETRY_MANAGER_ERROR_CODES } from './constants.js';
+import { createFakeRedis } from '../../../../tests/helpers/fake-redis.js';
 import { logger } from '../../logger.js';
-import {
-  horizonClientDataValidationErrors,
-  horizonClientRetryExhausted,
-  horizonClientConsecutiveFailures,
-  horizonClientLastSuccessTimestamp,
-  horizonClientHealthState,
-  horizonClientConcurrentOperations,
-} from '../../metrics.js';
-import { DEFAULT_UNHEALTHY_AFTER_FAILURES, HealthStatus, RetryManager, createRetryManager } from './retry-manager.js';
-import { HORIZON_VALIDATION_ERROR, REDACTED } from './sanitizer.js';
 
-const SECRET_SEED = `S${'B'.repeat(55)}`;
 const URL = 'https://horizon-testnet.stellar.org';
 
-async function metricValue(metric, labels = {}) {
-  const { values } = await metric.get();
-  const match = values.find((v) => Object.entries(labels).every(([k, val]) => v.labels[k] === val));
-  return match ? match.value : undefined;
-}
+const httpError = (status, extra = {}) => Object.assign(new Error(`HTTP ${status}`), { response: { status, ...extra } });
+const netError = (code = 'ECONNRESET') => Object.assign(new Error('socket hang up'), { code });
 
-function networkError(message = 'socket hang up') {
-  const err = new Error(message);
-  err.code = 'ECONNRESET';
-  return err;
-}
-
-function httpError(status) {
-  const err = new Error(`HTTP ${status}`);
-  err.response = { status };
-  return err;
+/** Manager with recorded, instant sleeps and deterministic jitter. */
+function makeManager({ backoff = {}, retryDelays, coordinator, limiter, random = () => 1 } = {}) {
+  const sleeps = [];
+  const manager = new RetryManager(retryDelays, {
+    horizonUrl: URL,
+    backoff: { baseDelayMs: 100, maxDelayMs: 1_000, multiplier: 2, jitter: 'none', ...backoff },
+    coordinator: coordinator ?? new HorizonRetryCoordinator({ redisClient: null, horizonUrl: URL }),
+    limiter,
+    random,
+    sleep: async (ms) => { sleeps.push(ms); },
+  });
+  return { manager, sleeps };
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  horizonClientDataValidationErrors.reset();
-  horizonClientRetryExhausted.reset();
-  horizonClientConsecutiveFailures.reset();
-  horizonClientLastSuccessTimestamp.reset();
-  horizonClientHealthState.reset();
-  horizonClientConcurrentOperations.reset();
 });
 
-describe('RetryManager validation (#1437)', () => {
-  it('rejects an invalid retry schedule at construction', () => {
-    expect(() => new RetryManager([-5])).toThrow(expect.objectContaining({ code: HORIZON_VALIDATION_ERROR }));
-    expect(() => new RetryManager(undefined)).toThrow(expect.objectContaining({ validationType: 'retry_delays' }));
-    expect(() => createRetryManager(Array(20).fill(1))).toThrow(TypeError);
+describe('exponential backoff (issue #1439)', () => {
+  it('returns immediately on success without sleeping', async () => {
+    const { manager, sleeps } = makeManager();
+    const op = vi.fn().mockResolvedValue('ok');
+    await expect(manager.executeWithRetry(op, 'loadAccount', {}, URL)).resolves.toBe('ok');
+    expect(op).toHaveBeenCalledTimes(1);
+    expect(sleeps).toEqual([]);
   });
 
-  it('freezes the schedule so callers cannot mutate it later', () => {
-    const delays = [0, 0];
-    const manager = new RetryManager(delays);
-    delays.push(99_999);
-    expect(manager.getConfig()).toMatchObject({ retryDelays: [0, 0], maxAttempts: 3 });
-  });
-
-  it('rejects an invalid operation name before calling Horizon', async () => {
-    const manager = new RetryManager([0]);
-    const op = vi.fn();
-
-    await expect(manager.executeWithRetry(op, 'load account\n', {}, URL)).rejects.toMatchObject({
-      code: HORIZON_VALIDATION_ERROR,
-      validationType: 'operation_name',
-    });
-    expect(op).not.toHaveBeenCalled();
-    expect(await metricValue(horizonClientDataValidationErrors, { operation: 'invalid', validation_type: 'operation_name' })).toBe(1);
-    expect(manager.getConfig().currentConcurrentOperations).toBe(0);
-  });
-
-  it('rejects a non-function operation', async () => {
-    const manager = new RetryManager([0]);
-    await expect(manager.executeWithRetry('nope', 'loadAccount', {}, URL)).rejects.toMatchObject({
-      validationType: 'operation',
-    });
-    expect(await metricValue(horizonClientDataValidationErrors, { operation: 'loadAccount', validation_type: 'operation' })).toBe(1);
-    expect(logger.error).toHaveBeenCalled();
-  });
-
-  it('sanitizes context and error text in retry logs', async () => {
-    const manager = new RetryManager([0]);
+  it('retries transient failures with exponentially growing delays', async () => {
+    const { manager, sleeps } = makeManager({ backoff: { maxRetries: 3 } });
     const op = vi.fn()
-      .mockRejectedValueOnce(networkError(`boom\r\nforged ${SECRET_SEED}`))
+      .mockRejectedValueOnce(httpError(500))
+      .mockRejectedValueOnce(netError())
+      .mockRejectedValueOnce(httpError(502))
       .mockResolvedValue('ok');
 
-    await manager.executeWithRetry(op, 'loadAccount', { accountId: 'GABC', secret: SECRET_SEED, 'x\ny': 1 }, URL);
-
-    const [fields] = logger.warn.mock.calls[0];
-    expect(fields).toMatchObject({ operation: 'loadAccount', attempt: 1, accountId: 'GABC', secret: REDACTED });
-    expect(fields.error).toBe(`boom forged ${REDACTED}`);
-    expect(fields).not.toHaveProperty('x\ny');
-    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(SECRET_SEED);
+    await expect(manager.executeWithRetry(op, 'loadAccount', {}, URL)).resolves.toBe('ok');
+    expect(op).toHaveBeenCalledTimes(4);
+    expect(sleeps).toEqual([100, 200, 400]);
   });
 
-  it('never leaks URL credentials or secrets in the thrown error', async () => {
-    const manager = new RetryManager([]);
-    const op = vi.fn().mockRejectedValue(networkError(`refused ${SECRET_SEED}`));
-
-    const err = await manager
-      .executeWithRetry(op, 'loadAccount', { seed: SECRET_SEED }, 'https://u:p@horizon.example.com/?key=1')
-      .catch((e) => e);
-
-    expect(err.message).toBe(`Unable to connect to Horizon (https://horizon.example.com): refused ${REDACTED}`);
-    expect(err.status).toBe(502);
+  it('applies jitter from the injected random source', async () => {
+    const { manager, sleeps } = makeManager({ backoff: { jitter: 'full' }, random: () => 0.5 });
+    const op = vi.fn().mockRejectedValueOnce(httpError(503)).mockResolvedValue('ok');
+    await manager.executeWithRetry(op, 'getFeeStats', {}, URL);
+    // 503 also publishes a cooldown, which is waited out before the next attempt.
+    expect(sleeps).toContain(50);
   });
-});
 
-describe('RetryManager alert metrics and health telemetry (#1438)', () => {
-  it('starts healthy with no tracked operations', () => {
-    const manager = new RetryManager([0]);
-    expect(manager.getHealth()).toEqual({
-      status: HealthStatus.HEALTHY,
-      unhealthyAfterFailures: DEFAULT_UNHEALTHY_AFTER_FAILURES,
-      concurrentOperations: 0,
-      operations: {},
+  it('throws a wrapped error after exhausting retries', async () => {
+    const { manager, sleeps } = makeManager({ backoff: { maxRetries: 2 } });
+    const op = vi.fn().mockRejectedValue(httpError(500));
+
+    const err = await manager.executeWithRetry(op, 'loadAccount', {}, URL).catch((e) => e);
+    expect(op).toHaveBeenCalledTimes(3);
+    expect(sleeps).toEqual([100, 200]);
+    expect(err).toMatchObject({
+      status: 502,
+      operation: 'loadAccount',
+      attempts: 3,
+      retryStopReason: RETRY_STOP_REASONS.EXHAUSTED,
     });
-  });
-
-  it('records last success and keeps the operation healthy', async () => {
-    const manager = new RetryManager([0], '', { now: () => 1_700_000_000_000 });
-    await manager.executeWithRetry(() => Promise.resolve('ok'), 'getFeeStats', {}, URL);
-
-    const health = manager.getHealth();
-    expect(health.status).toBe(HealthStatus.HEALTHY);
-    expect(health.operations.getFeeStats).toMatchObject({
-      status: 'healthy',
-      consecutiveFailures: 0,
-      totalSuccesses: 1,
-      lastSuccessAt: new Date(1_700_000_000_000).toISOString(),
-    });
-    expect(await metricValue(horizonClientLastSuccessTimestamp, { operation: 'getFeeStats' })).toBe(1_700_000_000);
-    expect(await metricValue(horizonClientHealthState)).toBe(0);
-  });
-
-  it('counts retry exhaustion and degrades, then turns unhealthy at the threshold', async () => {
-    const manager = new RetryManager([0], '', { unhealthyAfterFailures: 2 });
-    const failing = () => Promise.reject(networkError());
-
-    await manager.executeWithRetry(failing, 'loadAccount', {}, URL).catch(() => {});
-    expect(manager.getHealth().status).toBe(HealthStatus.DEGRADED);
-    expect(await metricValue(horizonClientHealthState)).toBe(1);
-    expect(await metricValue(horizonClientConsecutiveFailures, { operation: 'loadAccount' })).toBe(1);
-
-    await manager.executeWithRetry(failing, 'loadAccount', {}, URL).catch(() => {});
-    expect(manager.getHealth().status).toBe(HealthStatus.UNHEALTHY);
-    expect(manager.getHealth().operations.loadAccount).toMatchObject({
-      consecutiveFailures: 2,
-      totalFailures: 2,
-      lastErrorType: 'network_error',
-    });
-    expect(await metricValue(horizonClientHealthState)).toBe(2);
-    expect(await metricValue(horizonClientRetryExhausted, { operation: 'loadAccount', error_type: 'network_error' })).toBe(2);
-    expect(logger.error).toHaveBeenCalledWith(
-      expect.objectContaining({ operation: 'loadAccount', consecutiveFailures: 2 }),
-      'Horizon client: operation is unhealthy after consecutive failures',
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: RETRY_STOP_REASONS.EXHAUSTED }),
+      'Horizon client: giving up on operation',
     );
   });
 
-  it('recovers to healthy after a success', async () => {
-    const manager = new RetryManager([], '', { unhealthyAfterFailures: 1 });
-    await manager.executeWithRetry(() => Promise.reject(httpError(503)), 'fetchTransaction', {}, URL).catch(() => {});
-    expect(manager.getHealth().status).toBe(HealthStatus.UNHEALTHY);
-
-    await manager.executeWithRetry(() => Promise.resolve({}), 'fetchTransaction', {}, URL);
-    expect(manager.getHealth().status).toBe(HealthStatus.HEALTHY);
-    expect(await metricValue(horizonClientConsecutiveFailures, { operation: 'fetchTransaction' })).toBe(0);
-    expect(await metricValue(horizonClientHealthState)).toBe(0);
-  });
-
-  it('does not treat non-retryable client errors as an outage', async () => {
-    const manager = new RetryManager([0, 0]);
-    const op = vi.fn().mockRejectedValue(httpError(404));
-
-    await expect(manager.executeWithRetry(op, 'loadAccount', { accountId: 'G1' }, URL)).rejects.toThrow('not found');
-
+  it.each([
+    ['404', httpError(404), 404],
+    ['400', httpError(400), 400],
+    ['an error flagged retryable:false', Object.assign(httpError(500), { retryable: false }), 502],
+  ])('does not retry %s', async (_label, error, status) => {
+    const { manager, sleeps } = makeManager();
+    const op = vi.fn().mockRejectedValue(error);
+    const err = await manager.executeWithRetry(op, 'loadAccount', { accountId: 'GABC' }, URL).catch((e) => e);
     expect(op).toHaveBeenCalledTimes(1);
-    expect(manager.getHealth().operations.loadAccount).toMatchObject({
-      status: 'healthy',
-      consecutiveFailures: 0,
-      lastErrorType: 'not_found',
-    });
-    expect(await metricValue(horizonClientRetryExhausted, { operation: 'loadAccount', error_type: 'not_found' })).toBeUndefined();
+    expect(sleeps).toEqual([]);
+    expect(err.status).toBe(status);
+    expect(err.retryStopReason).toBe(RETRY_STOP_REASONS.NOT_RETRYABLE);
   });
 
-  it('does not count exhaustion when a retry succeeds', async () => {
-    const manager = new RetryManager([0, 0]);
-    const op = vi.fn().mockRejectedValueOnce(httpError(429)).mockResolvedValue('ok');
+  it('keeps the legacy fixed schedule when retryDelays is given', async () => {
+    const { manager, sleeps } = makeManager({ retryDelays: [10, 20] });
+    const op = vi.fn().mockRejectedValue(netError('ETIMEDOUT'));
+    await expect(manager.executeWithRetry(op, 'loadAccount', {}, URL)).rejects.toMatchObject({ status: 502 });
+    expect(op).toHaveBeenCalledTimes(3);
+    expect(sleeps).toEqual([10, 20]);
+    expect(manager.getConfig()).toMatchObject({ retryDelays: [10, 20], maxAttempts: 3 });
+  });
 
-    await expect(manager.executeWithRetry(op, 'fetchPayments', {}, URL)).resolves.toBe('ok');
+  it('waits at least the Retry-After hint on a 429', async () => {
+    const { manager, sleeps } = makeManager();
+    const throttled = httpError(429, { headers: { 'retry-after': '0.3' } });
+    const op = vi.fn().mockRejectedValueOnce(throttled).mockResolvedValue('ok');
+
+    await manager.executeWithRetry(op, 'fetchPayments', {}, URL);
+    // backoff (100) < Retry-After (300): the hint wins.
+    expect(sleeps[0]).toBe(300);
+  });
+
+  it('fails fast when Retry-After exceeds maxRetryAfterMs', async () => {
+    const { manager, sleeps } = makeManager({ backoff: { maxRetryAfterMs: 1_000 } });
+    const op = vi.fn().mockRejectedValue(httpError(429, { headers: { 'retry-after': '120' } }));
+
+    const err = await manager.executeWithRetry(op, 'loadAccount', {}, URL).catch((e) => e);
+    expect(op).toHaveBeenCalledTimes(1);
+    expect(sleeps).toEqual([]);
+    expect(err).toMatchObject({ status: 429, retryStopReason: RETRY_STOP_REASONS.RETRY_AFTER_TOO_LONG });
+  });
+
+  it('stops when the next wait would exceed the total time budget', async () => {
+    const { manager } = makeManager({ backoff: { maxElapsedMs: 150, maxRetries: 5 } });
+    const op = vi.fn().mockRejectedValue(httpError(500));
+
+    const err = await manager.executeWithRetry(op, 'loadAccount', {}, URL).catch((e) => e);
+    // delay(0)=100 fits, delay(1)=200 does not.
     expect(op).toHaveBeenCalledTimes(2);
-    expect((await horizonClientRetryExhausted.get()).values).toHaveLength(0);
-    expect(manager.getHealth().operations.fetchPayments.status).toBe('healthy');
+    expect(err.retryStopReason).toBe(RETRY_STOP_REASONS.BUDGET_EXCEEDED);
   });
 
-  it('reports the worst operation as the overall status', async () => {
-    const manager = new RetryManager([], '', { unhealthyAfterFailures: 3 });
-    await manager.executeWithRetry(() => Promise.resolve(1), 'getFeeStats', {}, URL);
-    await manager.executeWithRetry(() => Promise.reject(networkError()), 'loadAccount', {}, URL).catch(() => {});
-
-    const health = manager.getHealth();
-    expect(health.status).toBe(HealthStatus.DEGRADED);
-    expect(health.operations.getFeeStats.status).toBe('healthy');
-    expect(health.operations.loadAccount.status).toBe('degraded');
+  it('logs only primitive context values', async () => {
+    const { manager } = makeManager();
+    const op = vi.fn().mockRejectedValueOnce(httpError(500)).mockResolvedValue('ok');
+    await manager.executeWithRetry(op, 'fetchPayments', { accountId: 'GABC', options: { secret: 'x' } }, URL);
+    const [fields] = logger.warn.mock.calls.find(([, msg]) => msg === 'Horizon client: retrying operation after error');
+    expect(fields.accountId).toBe('GABC');
+    expect(fields).not.toHaveProperty('options');
   });
 
-  it('falls back to the default threshold for invalid options', () => {
-    expect(new RetryManager([], '', { unhealthyAfterFailures: 0 }).unhealthyAfterFailures).toBe(DEFAULT_UNHEALTHY_AFTER_FAILURES);
-    expect(new RetryManager([], '', { unhealthyAfterFailures: 'x' }).unhealthyAfterFailures).toBe(DEFAULT_UNHEALTHY_AFTER_FAILURES);
-    expect(new RetryManager([], '', { unhealthyAfterFailures: 2.5 }).unhealthyAfterFailures).toBe(DEFAULT_UNHEALTHY_AFTER_FAILURES);
+  it('accepts the legacy (retryDelays, metricsPrefix) signature', () => {
+    const manager = new RetryManager([5], 'prefix_');
+    expect(manager.metricsPrefix).toBe('prefix_');
+    expect(manager.getConfig().maxAttempts).toBe(2);
+    expect(createRetryManager().getConfig().backoff.strategy).toBe('exponential');
+  });
+});
+
+describe('concurrency control (issue #1440)', () => {
+  it('limits concurrent operations and sheds load beyond the queue with 503', async () => {
+    const limiter = new ConcurrencyLimiter({ maxConcurrent: 1, maxQueue: 1 });
+    const { manager } = makeManager({ limiter });
+    let release;
+    const slow = () => new Promise((resolve) => { release = () => resolve('slow'); });
+
+    const first = manager.executeWithRetry(slow, 'loadAccount', {}, URL);
+    const second = manager.executeWithRetry(async () => 'queued', 'loadAccount', {}, URL);
+    await expect(manager.executeWithRetry(async () => 'never', 'loadAccount', {}, URL))
+      .rejects.toMatchObject({ status: 503, code: RETRY_MANAGER_ERROR_CODES.QUEUE_FULL });
+
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    release();
+    await expect(first).resolves.toBe('slow');
+    await expect(second).resolves.toBe('queued');
+    expect(manager.getConfig().concurrency).toMatchObject({ active: 0, pending: 0 });
   });
 
-  it('bounds the number of tracked operations', async () => {
-    const manager = new RetryManager([]);
-    for (let i = 0; i < 70; i += 1) {
-      await manager.executeWithRetry(() => Promise.resolve(i), `op${i}`, {}, URL);
-    }
-    expect(Object.keys(manager.getHealth().operations)).toHaveLength(64);
+  it('skips a retry when every cluster retry slot is taken', async () => {
+    const coordinator = new HorizonRetryCoordinator({ redisClient: null, horizonUrl: URL, maxConcurrentRetries: 1 });
+    const held = await coordinator.acquireRetrySlot('loadAccount');
+    const { manager } = makeManager({ coordinator });
+    const op = vi.fn().mockRejectedValue(httpError(500));
+
+    const err = await manager.executeWithRetry(op, 'loadAccount', {}, URL).catch((e) => e);
+    expect(op).toHaveBeenCalledTimes(1);
+    expect(err.retryStopReason).toBe(RETRY_STOP_REASONS.RETRY_SLOTS_EXHAUSTED);
+    await held.release();
+  });
+
+  it('releases retry slots after recovering and after giving up', async () => {
+    const coordinator = new HorizonRetryCoordinator({ redisClient: null, horizonUrl: URL, maxConcurrentRetries: 1 });
+    const { manager } = makeManager({ coordinator });
+
+    await manager.executeWithRetry(
+      vi.fn().mockRejectedValueOnce(httpError(500)).mockResolvedValue('ok'),
+      'loadAccount', {}, URL,
+    );
+    await manager.executeWithRetry(vi.fn().mockRejectedValue(httpError(500)), 'loadAccount', {}, URL).catch(() => {});
+
+    expect(coordinator.localSlots.size).toBe(0);
+    expect(await coordinator.acquireRetrySlot('loadAccount')).not.toBeNull();
+  });
+
+  it('publishes a cooldown on 429 that a second manager waits out before calling Horizon', async () => {
+    const redis = createFakeRedis();
+    const coordA = new HorizonRetryCoordinator({ redisClient: redis, horizonUrl: URL });
+    const coordB = new HorizonRetryCoordinator({ redisClient: redis, horizonUrl: URL });
+    const a = makeManager({ coordinator: coordA });
+    const b = makeManager({ coordinator: coordB });
+
+    await a.manager.executeWithRetry(
+      vi.fn().mockRejectedValueOnce(httpError(429, { headers: { 'retry-after': '1' } })).mockResolvedValue('ok'),
+      'loadAccount', {}, URL,
+    );
+
+    const op = vi.fn().mockResolvedValue('ok');
+    await b.manager.executeWithRetry(op, 'loadAccount', {}, URL);
+    expect(op).toHaveBeenCalledTimes(1);
+    expect(b.sleeps[0]).toBeGreaterThan(500);
+    expect(b.sleeps[0]).toBeLessThanOrEqual(1_000);
+  });
+
+  it('never waits on a cooldown past the operation budget', async () => {
+    const coordinator = new HorizonRetryCoordinator({ redisClient: null, horizonUrl: URL, maxCooldownMs: 5_000 });
+    await coordinator.recordCooldown(5_000);
+    const { manager, sleeps } = makeManager({ coordinator, backoff: { maxElapsedMs: 200 } });
+    await manager.executeWithRetry(async () => 'ok', 'loadAccount', {}, URL);
+    expect(sleeps[0]).toBeLessThanOrEqual(200);
+  });
+
+  it('keeps working when the coordinator fails', async () => {
+    const coordinator = new HorizonRetryCoordinator({ redisClient: null, horizonUrl: URL });
+    coordinator.getCooldownRemainingMs = vi.fn().mockRejectedValue(new Error('broken'));
+    const { manager } = makeManager({ coordinator });
+    await expect(manager.executeWithRetry(async () => 'ok', 'loadAccount', {}, URL)).resolves.toBe('ok');
+  });
+
+  it('setCoordinator swaps the coordinator and rejects other objects', () => {
+    const { manager } = makeManager();
+    const next = new HorizonRetryCoordinator({ redisClient: createFakeRedis(), horizonUrl: URL });
+    manager.setCoordinator(next);
+    expect(manager.getConfig().coordination.backend).toBe('redis');
+    expect(() => manager.setCoordinator({})).toThrow(TypeError);
+  });
+
+  it('tracks concurrent operations and never leaks the counter', async () => {
+    const { manager } = makeManager();
+    await Promise.allSettled([
+      manager.executeWithRetry(async () => 'ok', 'a', {}, URL),
+      manager.executeWithRetry(async () => { throw httpError(404); }, 'b', {}, URL),
+    ]);
+    expect(manager.getConfig().currentConcurrentOperations).toBe(0);
   });
 });

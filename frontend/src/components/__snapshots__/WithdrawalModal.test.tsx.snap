@@ -1,0 +1,376 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`WithdrawalModal > Snapshot Tests > matches snapshot in AUTH authenticating state 1`] = `
+<div>
+  <div
+    class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
+  >
+    <div
+      aria-hidden="true"
+      class="absolute inset-0 bg-black/80 backdrop-blur-sm"
+      data-testid="withdrawal-backdrop"
+    />
+    <div
+      aria-describedby="withdrawal-modal-subtitle"
+      aria-labelledby="withdrawal-modal-title"
+      aria-modal="true"
+      class="relative w-full max-w-2xl max-h-[90vh] sm:max-h-[85vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border-t sm:border border-white/10 bg-black/90 sm:bg-black/80 shadow-2xl backdrop-blur-xl"
+      data-testid="withdrawal-modal"
+      role="dialog"
+    >
+      <div
+        aria-hidden="true"
+        class="flex justify-center pt-3 pb-1 sm:hidden"
+        data-testid="withdrawal-drawer-handle"
+      >
+        <div
+          class="h-1.5 w-12 rounded-full bg-white/20"
+        />
+      </div>
+      <div
+        class="flex items-center justify-between border-b border-white/10 p-6"
+      >
+        <div>
+          <h2
+            class="text-xl font-bold text-white"
+            id="withdrawal-modal-title"
+          >
+            Withdraw Funds
+          </h2>
+          <p
+            class="text-sm text-slate-400"
+            id="withdrawal-modal-subtitle"
+          >
+            Via Stellar SEP-0024 Anchor
+          </p>
+        </div>
+        <button
+          aria-label="Close withdrawal modal"
+          class="rounded-full p-2 text-slate-400 hover:bg-white/5 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+          data-testid="withdrawal-close-btn"
+          type="button"
+        >
+          <svg
+            aria-hidden="true"
+            class="h-6 w-6"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M6 18L18 6M6 6l12 12"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+        </button>
+      </div>
+      <div
+        class="p-8"
+      >
+        <div
+          aria-live="polite"
+          class="flex flex-col items-center justify-center py-10 text-center"
+          data-testid="withdrawal-authenticating-status"
+          role="status"
+        >
+          <div
+            class="relative mb-6"
+          >
+            <div
+              class="h-20 w-20 animate-ping rounded-full bg-accent/20"
+            />
+            <div
+              class="absolute inset-0 flex items-center justify-center"
+            >
+              <div
+                class="h-12 w-12 rounded-full border-4 border-accent border-t-transparent animate-spin"
+              />
+            </div>
+          </div>
+          <h3
+            class="text-lg font-bold text-white"
+          >
+            Authenticating
+          </h3>
+          <p
+            class="mt-2 text-sm text-slate-400"
+          >
+            Please sign the challenge transaction in your wallet to securely connect to 
+            testanchor.stellar.org
+            .
+          </p>
+        </div>
+      </div>
+      <div
+        class="bg-white/[0.02] p-6 text-center"
+      >
+        <p
+          class="text-xs text-slate-500"
+        >
+          Secured by Stellar Network • SEP-0024 Standard
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`WithdrawalModal > Snapshot Tests > matches snapshot in READY state with interactiveUrl 1`] = `
+<div>
+  <div
+    class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
+  >
+    <div
+      aria-hidden="true"
+      class="absolute inset-0 bg-black/80 backdrop-blur-sm"
+      data-testid="withdrawal-backdrop"
+    />
+    <div
+      aria-describedby="withdrawal-modal-subtitle"
+      aria-labelledby="withdrawal-modal-title"
+      aria-modal="true"
+      class="relative w-full max-w-2xl max-h-[90vh] sm:max-h-[85vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border-t sm:border border-white/10 bg-black/90 sm:bg-black/80 shadow-2xl backdrop-blur-xl"
+      data-testid="withdrawal-modal"
+      role="dialog"
+    >
+      <div
+        aria-hidden="true"
+        class="flex justify-center pt-3 pb-1 sm:hidden"
+        data-testid="withdrawal-drawer-handle"
+      >
+        <div
+          class="h-1.5 w-12 rounded-full bg-white/20"
+        />
+      </div>
+      <div
+        class="flex items-center justify-between border-b border-white/10 p-6"
+      >
+        <div>
+          <h2
+            class="text-xl font-bold text-white"
+            id="withdrawal-modal-title"
+          >
+            Withdraw Funds
+          </h2>
+          <p
+            class="text-sm text-slate-400"
+            id="withdrawal-modal-subtitle"
+          >
+            Via Stellar SEP-0024 Anchor
+          </p>
+        </div>
+        <button
+          aria-label="Close withdrawal modal"
+          class="rounded-full p-2 text-slate-400 hover:bg-white/5 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+          data-testid="withdrawal-close-btn"
+          type="button"
+        >
+          <svg
+            aria-hidden="true"
+            class="h-6 w-6"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M6 18L18 6M6 6l12 12"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+        </button>
+      </div>
+      <div
+        class="p-8"
+      >
+        <div
+          class="h-[500px] w-full overflow-hidden rounded-xl border border-white/10 bg-white/5"
+          data-testid="withdrawal-interactive-frame"
+        >
+          <iframe
+            class="h-full w-full"
+            src="https://testanchor.stellar.org/sep24/interactive?jwt=test1234"
+            title="Stellar Anchor Withdrawal"
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`WithdrawalModal > Snapshot Tests > matches snapshot when modal is closed 1`] = `<div />`;
+
+exports[`WithdrawalModal > Snapshot Tests > matches snapshot when modal is open in IDLE state 1`] = `
+<div>
+  <div
+    class="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4"
+  >
+    <div
+      aria-hidden="true"
+      class="absolute inset-0 bg-black/80 backdrop-blur-sm"
+      data-testid="withdrawal-backdrop"
+    />
+    <div
+      aria-describedby="withdrawal-modal-subtitle"
+      aria-labelledby="withdrawal-modal-title"
+      aria-modal="true"
+      class="relative w-full max-w-2xl max-h-[90vh] sm:max-h-[85vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border-t sm:border border-white/10 bg-black/90 sm:bg-black/80 shadow-2xl backdrop-blur-xl"
+      data-testid="withdrawal-modal"
+      role="dialog"
+    >
+      <div
+        aria-hidden="true"
+        class="flex justify-center pt-3 pb-1 sm:hidden"
+        data-testid="withdrawal-drawer-handle"
+      >
+        <div
+          class="h-1.5 w-12 rounded-full bg-white/20"
+        />
+      </div>
+      <div
+        class="flex items-center justify-between border-b border-white/10 p-6"
+      >
+        <div>
+          <h2
+            class="text-xl font-bold text-white"
+            id="withdrawal-modal-title"
+          >
+            Withdraw Funds
+          </h2>
+          <p
+            class="text-sm text-slate-400"
+            id="withdrawal-modal-subtitle"
+          >
+            Via Stellar SEP-0024 Anchor
+          </p>
+        </div>
+        <button
+          aria-label="Close withdrawal modal"
+          class="rounded-full p-2 text-slate-400 hover:bg-white/5 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
+          data-testid="withdrawal-close-btn"
+          type="button"
+        >
+          <svg
+            aria-hidden="true"
+            class="h-6 w-6"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M6 18L18 6M6 6l12 12"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+        </button>
+      </div>
+      <div
+        class="p-8"
+      >
+        <div
+          class="flex flex-col gap-6"
+        >
+          <div
+            class="space-y-2"
+          >
+            <label
+              class="text-xs font-semibold uppercase tracking-wider text-slate-500"
+              for="asset-selection-group"
+              id="asset-selection-label"
+            >
+              Select Asset
+            </label>
+            <div
+              aria-labelledby="asset-selection-label"
+              class="grid grid-cols-2 gap-4"
+              id="asset-selection-group"
+              role="radiogroup"
+            >
+              <button
+                aria-checked="true"
+                aria-label="Select USDC"
+                class="flex flex-col items-center gap-2 rounded-2xl border p-4 transition-all focus:outline-none focus:ring-2 focus:ring-accent border-accent bg-accent/5 ring-1 ring-accent"
+                data-testid="asset-select-USDC"
+                role="radio"
+                type="button"
+              >
+                <span
+                  class="text-lg font-bold text-white"
+                >
+                  USDC
+                </span>
+                <span
+                  class="text-[10px] text-slate-500"
+                >
+                  GBBD67V6
+                  ...
+                </span>
+              </button>
+              <button
+                aria-checked="false"
+                aria-label="Select SRT"
+                class="flex flex-col items-center gap-2 rounded-2xl border p-4 transition-all focus:outline-none focus:ring-2 focus:ring-accent border-white/10 bg-white/5 hover:border-white/20"
+                data-testid="asset-select-SRT"
+                role="radio"
+                type="button"
+              >
+                <span
+                  class="text-lg font-bold text-white"
+                >
+                  SRT
+                </span>
+                <span
+                  class="text-[10px] text-slate-500"
+                >
+                  GCDGUC3O
+                  ...
+                </span>
+              </button>
+            </div>
+          </div>
+          <div
+            class="space-y-2"
+          >
+            <label
+              class="text-xs font-semibold uppercase tracking-wider text-slate-500"
+              for="anchor-domain-input"
+            >
+              Anchor Domain
+            </label>
+            <input
+              class="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-accent"
+              data-testid="withdrawal-anchor-input"
+              id="anchor-domain-input"
+              placeholder="e.g. testanchor.stellar.org"
+              type="text"
+              value="testanchor.stellar.org"
+            />
+          </div>
+          <button
+            class="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-4 text-sm font-bold text-black transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-accent"
+            data-testid="withdrawal-submit-btn"
+            type="button"
+          >
+            Continue to Anchor
+          </button>
+        </div>
+      </div>
+      <div
+        class="bg-white/[0.02] p-6 text-center"
+      >
+        <p
+          class="text-xs text-slate-500"
+        >
+          Secured by Stellar Network • SEP-0024 Standard
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+`;

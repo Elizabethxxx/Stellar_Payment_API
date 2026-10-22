@@ -1,68 +1,54 @@
 # Horizon Client Retry Manager
 
-`src/lib/stellar/horizon-client/retry-manager.js` wraps every Horizon call made
-by `HorizonClient` (`loadAccount`, `fetchPayments`, `fetchTransaction`,
-`findStrictReceivePaths`, `getFeeStats`) with retries, error mapping, metrics
-and health tracking.
+Covers issues **#1439** (exponential backoff), **#1440** (concurrency control
+and distributed locking) and **#1441** (integration and stress tests).
 
-## Payload sanitization and strict validation (issue #1437)
+| File | Role |
+|---|---|
+| `src/lib/stellar/horizon-client/backoff.js` | Backoff policy, jitter, Retry-After parsing (#1439) |
+| `src/lib/stellar/horizon-client/concurrency-limiter.js` | Per-process semaphore with a bounded queue (#1440) |
+| `src/lib/stellar/horizon-client/retry-coordinator.js` | Cluster-wide retry slots and rate-limit cooldown over Redis (#1440) |
+| `src/lib/stellar/horizon-client/retry-manager.js` | Runs operations with the above |
+| `tests/integration/horizon-retry-manager.test.js` | Real SDK + HTTP Horizon stub (#1441) |
+| `load-tests/horizon-retry-manager-stress.test.js` | Stress invariants (#1441) |
 
-Implemented in `src/lib/stellar/horizon-client/sanitizer.js`.
+## Retry policy (#1439)
 
-| Input | Rule | On failure |
-|-------|------|------------|
-| `retryDelays` (constructor) | Array of at most 10 integers, each 0–60000 ms. Stored as a frozen copy. | `TypeError`, `code: HORIZON_CLIENT_VALIDATION_ERROR`, `validationType: "retry_delays"` |
-| `operationName` | `/^[A-Za-z][A-Za-z0-9_]{0,63}$/` (it becomes a Prometheus label) | Same error, `validationType: "operation_name"`. The operation is never called. |
-| `operation` | Must be a function | Same error, `validationType: "operation"` |
-| `context` | Plain objects only. Keys must match `/^[A-Za-z0-9_.-]{1,64}$/`. `__proto__`/`constructor`/`prototype` are dropped. Max 16 keys. | Invalid keys are dropped silently. |
-| context values | Stringified (objects as JSON). Control characters stripped. Stellar secret seeds (`S…`, 56 chars) and `Bearer`/`Basic` credentials redacted. Truncated to 256 chars. Values under keys matching `secret|seed|password|passphrase|token|private|signature|authorization|api_key|mnemonic|cookie` are replaced with `[REDACTED]`. | — |
-| Horizon URL in errors and logs | Only `scheme://host[:port]/path` is kept. Credentials, query string and fragment are removed. | `[invalid-horizon-url]` |
-| Horizon error `detail` / network error text | Same string rules, capped at 512 chars | — |
+- Default: jittered exponential backoff, `delay(n) = random(0, min(maxDelayMs, baseDelayMs * multiplier^n))`.
+- An explicit `retryDelays` array keeps the legacy fixed schedule.
+- Retry-After is honoured; a hint above `maxRetryAfterMs` fails fast.
+- `maxElapsedMs` bounds the whole operation, waits included.
+- Only transient failures retry (408, 429, 5xx, network errors). Errors with `retryable: false` never retry.
+- SDK transport errors without a `code` (for example `connect ECONNREFUSED`) are now recognised as retryable.
 
-Validation failures increment
-`horizon_client_data_validation_errors_total{operation, validation_type}`.
-The `operation` label is `invalid` when the name itself was rejected.
+Every failure carries `attempts` and `retryStopReason`
+(`not_retryable`, `exhausted`, `budget_exceeded`, `retry_after_too_long`, `retry_slots_exhausted`).
 
-## Alert metrics and health telemetry (issue #1438)
+## Concurrency control (#1440)
 
-| Metric | Type | Meaning |
-|--------|------|---------|
-| `horizon_client_retry_exhausted_total{operation,error_type}` | Counter | Calls that failed with a retryable error after every retry |
-| `horizon_client_consecutive_failures{operation}` | Gauge | Consecutive exhausted failures. Reset by a success or by a non-retryable Horizon response (404/400 means Horizon is reachable). |
-| `horizon_client_last_success_timestamp_seconds{operation}` | Gauge | Unix time of the last success |
-| `horizon_client_health_state` | Gauge | `0` healthy, `1` degraded (any operation has ≥1 consecutive failure), `2` unhealthy (≥ `unhealthyAfterFailures`, default 5) |
+- **Limiter**: at most `maxConcurrent` Horizon calls per process, `maxQueue` waiting; overflow and queue timeouts return 503 (`HORIZON_CLIENT_QUEUE_FULL`, `HORIZON_CLIENT_QUEUE_TIMEOUT`).
+- **Retry slots**: `horizon:retry:slot:<hostHash>:<operation>:<i>`, acquired with `SET NX PX`, released by compare-and-delete. With no free slot the retry is skipped, so N instances cannot turn an outage into a retry storm.
+- **Cooldown**: a 429/503 publishes `horizon:retry:cooldown:<hostHash>` (capped by `maxCooldownMs`); every instance waits it out before its next attempt.
+- Fails open to an in-process implementation when Redis is missing or erroring. Enabled at startup by `configureHorizonRetryCoordination()` in `app.js`.
+- Keys never contain caller input: the host is hashed and operation names are restricted to `[A-Za-z0-9_]`.
 
-`HorizonClient#getHealth()` returns the same data as JSON, plus the result of
-the last `isReachable()` probe. A failed probe downgrades an otherwise healthy
-client to `degraded`:
+## Configuration
 
-```json
-{
-  "status": "degraded",
-  "unhealthyAfterFailures": 5,
-  "concurrentOperations": 0,
-  "operations": {
-    "loadAccount": {
-      "status": "degraded",
-      "consecutiveFailures": 2,
-      "totalSuccesses": 120,
-      "totalFailures": 2,
-      "lastSuccessAt": "2026-10-16T10:00:00.000Z",
-      "lastFailureAt": "2026-10-16T10:05:00.000Z",
-      "lastErrorType": "network_error"
-    }
-  },
-  "lastHealthCheck": { "reachable": false, "durationMs": 2001, "errorType": "timeout", "checkedAt": "2026-10-16T10:05:01.000Z" }
-}
-```
+| Variable | Default |
+|---|---|
+| `HORIZON_RETRY_STRATEGY` | `exponential` |
+| `HORIZON_RETRY_MAX_RETRIES` | `2` |
+| `HORIZON_RETRY_BASE_DELAY_MS` | `150` |
+| `HORIZON_RETRY_MAX_DELAY_MS` | `2000` |
+| `HORIZON_RETRY_MULTIPLIER` | `3` |
+| `HORIZON_RETRY_JITTER` | `full` (`full`, `equal`, `none`) |
+| `HORIZON_RETRY_MAX_ELAPSED_MS` | `10000` |
+| `HORIZON_RETRY_MAX_RETRY_AFTER_MS` | `5000` |
+| `HORIZON_CLIENT_MAX_CONCURRENCY` | `64` |
+| `HORIZON_CLIENT_MAX_QUEUE` | `1000` |
+| `HORIZON_CLIENT_QUEUE_TIMEOUT_MS` | `10000` |
+| `HORIZON_RETRY_MAX_CONCURRENT_RETRIES` | `32` |
+| `HORIZON_RETRY_SLOT_LEASE_MS` | `30000` |
+| `HORIZON_RETRY_MAX_COOLDOWN_MS` | `5000` |
 
-Configure the threshold with `new HorizonClient(url, passphrase, { unhealthyAfterFailures: 3 })`.
-The per-operation table is capped at 64 entries.
-
-Alerting rules: `docs/alerts/horizon-client-retry-manager.rules.yml`.
-
-## Tests
-
-```bash
-npx vitest run src/lib/stellar/horizon-client src/lib/stellar/horizon-client.test.js
-```
+All values are clamped to safe ranges; invalid values fall back to defaults.

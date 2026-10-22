@@ -200,7 +200,13 @@
       "7D": "7 dias",
       "30D": "30 dias",
       "1Y": "1 ano"
-    }
+    },
+    "heatmapKeyboardHint": "Use las flechas para navegar, Enter para inspeccionar, Escape para cerrar",
+    "heatmapDrawerTitle": "Detalles del Día",
+    "heatmapDrawerDate": "Fecha",
+    "heatmapDrawerCount": "Actividad",
+    "heatmapDrawerClose": "Cerrar detalles",
+    "heatmapDrawerHint": "Deslice hacia abajo o presione Escape para cerrar"
   },
   "paymentsPage": {
     "title": "Historial de pagos",

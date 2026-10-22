@@ -1,14 +1,28 @@
 /**
  * Horizon Client Retry Manager
- * 
- * Handles retry logic with exponential backoff and configurable delays.
  *
- * - Payload sanitization and strict validation (#1437): the retry schedule,
- *   operation name and callback are validated up front; context, Horizon URL
- *   and error text are sanitized before they reach logs or error messages.
- * - Alert metrics and health telemetry (#1438): retry exhaustion, consecutive
- *   failures, last-success timestamps and an aggregate health state are
- *   exported to Prometheus and available through getHealth().
+ * Runs Horizon reads with automated retries.
+ *
+ * Retry policy (issue #1439)
+ *   - Jittered exponential backoff by default (see backoff.js). An explicit
+ *     `retryDelays` array keeps the legacy fixed schedule.
+ *   - Retry-After from Horizon is honoured: the wait is at least the hint, and
+ *     a hint above maxRetryAfterMs fails fast instead of pinning the caller.
+ *   - A total time budget (maxElapsedMs) bounds every operation, including
+ *     all waits, so retries can never stretch a request indefinitely.
+ *   - Only transient failures are retried (isRetryableError). Errors flagged
+ *     `retryable: false` are never retried.
+ *
+ * Concurrency control (issue #1440)
+ *   - ConcurrencyLimiter: per-process cap on in-flight Horizon operations with
+ *     a bounded queue; overflow is rejected with 503 instead of piling up.
+ *   - HorizonRetryCoordinator: cluster-wide retry slots (Redis SET NX PX +
+ *     compare-and-delete release) and a shared Retry-After cooldown, so N
+ *     instances do not multiply a Horizon outage into a retry storm. Falls
+ *     back to an in-process implementation when Redis is unavailable.
+ *
+ * All operations wrapped here are idempotent reads, so retrying them cannot
+ * duplicate a payment.
  */
 
 import { logger } from "../../logger.js";
@@ -21,59 +35,86 @@ import {
   horizonClientRetryAttemptDuration,
   horizonClientErrorRecovery,
   horizonClientConcurrentOperations,
-  horizonClientDataValidationErrors,
-  horizonClientRetryExhausted,
-  horizonClientConsecutiveFailures,
-  horizonClientLastSuccessTimestamp,
-  horizonClientHealthState,
+  horizonClientBackpressure,
+  horizonClientQueueDepth,
+  horizonClientRateLimitWaitTime,
 } from "../../metrics.js";
-import { classifyError, handleError, isRetryableError } from "./error-handler.js";
-import {
-  sanitizeContext,
-  sanitizeErrorDetail,
-  sanitizeHorizonUrl,
-  validateOperation,
-  validateOperationName,
-  validateRetryDelays,
-} from "./sanitizer.js";
+import { classifyError, getErrorStatus, handleError, isRetryableError } from "./error-handler.js";
+import { computeBackoffDelay, parseRetryAfterMs, resolveBackoffOptions } from "./backoff.js";
+import { ConcurrencyLimiter } from "./concurrency-limiter.js";
+import { HorizonRetryCoordinator } from "./retry-coordinator.js";
 
-export const HealthStatus = Object.freeze({
-  HEALTHY: "healthy",
-  DEGRADED: "degraded",
-  UNHEALTHY: "unhealthy",
+/** Why the manager stopped retrying - attached to the thrown error. */
+export const RETRY_STOP_REASONS = Object.freeze({
+  NOT_RETRYABLE: "not_retryable",
+  EXHAUSTED: "exhausted",
+  BUDGET_EXCEEDED: "budget_exceeded",
+  RETRY_AFTER_TOO_LONG: "retry_after_too_long",
+  RETRY_SLOTS_EXHAUSTED: "retry_slots_exhausted",
 });
 
-const HEALTH_STATE_VALUE = Object.freeze({
-  [HealthStatus.HEALTHY]: 0,
-  [HealthStatus.DEGRADED]: 1,
-  [HealthStatus.UNHEALTHY]: 2,
-});
-
-export const DEFAULT_UNHEALTHY_AFTER_FAILURES = 5;
-// Bound the per-operation health table; operation names are validated, but a
-// caller generating names dynamically must not grow it without limit.
-const MAX_TRACKED_OPERATIONS = 64;
-
-function resolveUnhealthyThreshold(value) {
-  const raw = Number(value ?? DEFAULT_UNHEALTHY_AFTER_FAILURES);
-  if (!Number.isInteger(raw) || raw < 1) return DEFAULT_UNHEALTHY_AFTER_FAILURES;
-  return Math.min(raw, 1_000);
+/**
+ * Metrics must never break the request path. Some test suites mock
+ * metrics.js with only a subset of exports, and a prom-client label mismatch
+ * throws synchronously; both cases are swallowed here.
+ */
+function recordMetric(fn) {
+  try {
+    fn();
+  } catch {
+    // ignore
+  }
 }
+
+const defaultSleep = (ms) =>
+  new Promise((resolve) => {
+    if (ms <= 0) {
+      resolve();
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    timer.unref?.();
+  });
 
 /**
  * Retry manager class with configurable retry strategy
  */
 export class RetryManager {
   /**
-   * @param {number[]} retryDelays  Delay (ms) before each retry
-   * @param {string} [metricsPrefix]
+   * @param {number[]|undefined} retryDelays legacy fixed schedule; omit for exponential backoff
    * @param {object} [options]
-   * @param {number} [options.unhealthyAfterFailures=5]  Consecutive failures before "unhealthy"
-   * @param {() => number} [options.now]                 Injectable clock
+   * @param {object} [options.backoff]      see resolveBackoffOptions
+   * @param {object} [options.concurrency]  see resolveConcurrencyOptions
+   * @param {object} [options.coordination] see HorizonRetryCoordinator
+   * @param {HorizonRetryCoordinator} [options.coordinator]
+   * @param {ConcurrencyLimiter} [options.limiter]
+   * @param {string} [options.horizonUrl]
+   * @param {(ms:number) => Promise<void>} [options.sleep]  injectable for tests
+   * @param {() => number} [options.random]                 injectable for tests
+   * @param {string} [options.metricsPrefix]                kept for compatibility
    */
-  constructor(retryDelays, metricsPrefix = "", options = {}) {
-    this.retryDelays = validateRetryDelays(retryDelays);
-    this.metricsPrefix = metricsPrefix;
+  constructor(retryDelays, options = {}) {
+    // Backwards compatibility: the second positional argument used to be
+    // `metricsPrefix`.
+    const opts = typeof options === "string" ? { metricsPrefix: options } : options ?? {};
+
+    this.policy = resolveBackoffOptions({ ...(opts.backoff ?? {}), retryDelays });
+    this.retryDelays = this.policy.fixedDelays ?? retryDelays ?? [];
+    this.metricsPrefix = opts.metricsPrefix ?? "";
+    this.horizonUrl = opts.horizonUrl ?? "default";
+    this.sleep = typeof opts.sleep === "function" ? opts.sleep : defaultSleep;
+    this.random = typeof opts.random === "function" ? opts.random : Math.random;
+
+    this.limiter =
+      opts.limiter ??
+      new ConcurrencyLimiter({
+        ...(opts.concurrency ?? {}),
+        onQueueChange: (depth) => recordMetric(() => horizonClientQueueDepth.set(depth)),
+      });
+    this.coordinator =
+      opts.coordinator ??
+      new HorizonRetryCoordinator({ ...(opts.coordination ?? {}), horizonUrl: this.horizonUrl });
+
     this.concurrentOperations = 0;
     this.unhealthyAfterFailures = resolveUnhealthyThreshold(options.unhealthyAfterFailures);
     this._now = typeof options.now === "function" ? options.now : () => Date.now();
@@ -81,119 +122,182 @@ export class RetryManager {
   }
 
   /**
+   * Swap the retry coordinator (e.g. once Redis is connected at startup).
+   * In-flight operations keep the coordinator they started with.
+   */
+  setCoordinator(coordinator) {
+    if (!(coordinator instanceof HorizonRetryCoordinator)) {
+      throw new TypeError("setCoordinator expects a HorizonRetryCoordinator");
+    }
+    this.coordinator = coordinator;
+  }
+
+  /**
    * Execute operation with automatic retry logic
    */
   async executeWithRetry(operation, operationName, context = {}, horizonUrl) {
-    this._validateRequest(operation, operationName);
+    let releaseSlot;
+    try {
+      releaseSlot = await this.limiter.acquire(operationName);
+    } catch (err) {
+      // Load shed before reaching Horizon.
+      recordMetric(() => horizonClientBackpressure.inc({ operation: operationName }));
+      this._recordError(operationName, err);
+      logger.warn(
+        { operation: operationName, code: err?.code, ...this._safeContext(context) },
+        "Horizon client: request rejected by concurrency limiter",
+      );
+      throw err;
+    }
 
-    const safeContext = sanitizeContext(context);
-    const safeUrl = sanitizeHorizonUrl(horizonUrl);
     const totalStartTime = Date.now();
+    const deadline = totalStartTime + this.policy.maxElapsedMs;
+    const coordinator = this.coordinator;
     this.concurrentOperations++;
-    horizonClientConcurrentOperations.inc();
+    recordMetric(() => horizonClientConcurrentOperations.inc());
 
+    let retryPermit = null;
     try {
       let lastError = null;
 
-      for (let attempt = 0; attempt <= this.retryDelays.length; attempt += 1) {
+      for (let attempt = 0; attempt <= this.policy.maxRetries; attempt += 1) {
+        await this._waitForCooldown(coordinator, operationName, deadline);
+
         const attemptStartTime = Date.now();
-        
         try {
           const result = await operation();
-          
-          // Record attempt duration
-          const attemptDuration = (Date.now() - attemptStartTime) / 1000;
-          horizonClientRetryAttemptDuration.observe(
-            { operation: operationName, attempt: attempt + 1 },
-            attemptDuration
-          );
-          
+          this._observeAttempt(operationName, attempt, attemptStartTime);
           this._recordSuccess(operationName, totalStartTime);
-          this._markReachable(operationName, null);
-          
-          // If this was a retry (attempt > 0), record successful recovery
+
           if (attempt > 0) {
-            horizonClientErrorRecovery.inc({
-              operation: operationName,
-              error_type: classifyError(lastError),
-              recovery_attempt: attempt,
-            });
+            recordMetric(() =>
+              horizonClientErrorRecovery.inc({
+                operation: operationName,
+                error_type: classifyError(lastError),
+                recovery_attempt: attempt,
+              }),
+            );
           }
-          
           return result;
         } catch (err) {
           lastError = err;
-          
-          // Record attempt duration even for failed attempts
-          const attemptDuration = (Date.now() - attemptStartTime) / 1000;
-          horizonClientRetryAttemptDuration.observe(
-            { operation: operationName, attempt: attempt + 1 },
-            attemptDuration
-          );
-          
-          const retryable = isRetryableError(err);
-          if (!retryable || attempt === this.retryDelays.length) {
-            this._recordError(operationName, err);
-            if (retryable) {
-              // Every retry was spent on an infrastructure-level failure.
-              horizonClientRetryExhausted.inc({
-                operation: operationName,
-                error_type: classifyError(err),
-              });
-              this._markFailure(operationName, err);
-            } else {
-              // Horizon answered (e.g. 404 / 400): the dependency is reachable.
-              this._markReachable(operationName, err);
-            }
-            throw handleError(err, operationName, safeContext, safeUrl);
+          this._observeAttempt(operationName, attempt, attemptStartTime);
+        } finally {
+          if (retryPermit) {
+            await retryPermit.release();
+            retryPermit = null;
           }
-
-          this._recordRetry(operationName);
-          
-          const delay = this.retryDelays[attempt];
-          this._logRetry(operationName, attempt + 1, delay, err, safeContext);
-          
-          await this._sleep(delay);
         }
+
+        const decision = await this._planRetry(lastError, attempt, deadline, coordinator, operationName);
+        if (decision.stop) {
+          this._recordError(operationName, lastError);
+          this._logGiveUp(operationName, attempt + 1, decision.reason, lastError, context);
+          throw this._finalError(lastError, operationName, context, horizonUrl, attempt + 1, decision.reason);
+        }
+
+        retryPermit = decision.permit;
+        this._recordRetry(operationName);
+        this._logRetry(operationName, attempt + 1, decision.delayMs, lastError, context);
+        await this.sleep(decision.delayMs);
       }
 
-      // Should not reach here, but for completeness
-      throw handleError(lastError, operationName, safeContext, safeUrl);
+      // Unreachable: the loop either returns or throws.
+      throw this._finalError(
+        lastError,
+        operationName,
+        context,
+        horizonUrl,
+        this.policy.maxRetries + 1,
+        RETRY_STOP_REASONS.EXHAUSTED,
+      );
     } finally {
+      if (retryPermit) await retryPermit.release();
+      releaseSlot();
       this.concurrentOperations--;
-      horizonClientConcurrentOperations.dec();
-      
-      // Record total operation duration
+      recordMetric(() => horizonClientConcurrentOperations.dec());
+
       const totalDuration = (Date.now() - totalStartTime) / 1000;
-      horizonClientOperationDuration.observe(
-        { operation: operationName, phase: "total" },
-        totalDuration
+      recordMetric(() =>
+        horizonClientOperationDuration.observe({ operation: operationName, phase: "total" }, totalDuration),
       );
     }
   }
 
   /**
-   * Strictly validate the request before any work or metrics happen.
+   * Decide whether (and how long) to wait before the next attempt.
+   * @private
+   * @returns {Promise<{stop: true, reason: string} | {stop: false, delayMs: number, permit: object}>}
+   */
+  async _planRetry(err, attempt, deadline, coordinator, operationName) {
+    if (err?.retryable === false || !isRetryableError(err)) {
+      return { stop: true, reason: RETRY_STOP_REASONS.NOT_RETRYABLE };
+    }
+    if (attempt >= this.policy.maxRetries) {
+      return { stop: true, reason: RETRY_STOP_REASONS.EXHAUSTED };
+    }
+
+    const status = getErrorStatus(err);
+    const retryAfterMs = parseRetryAfterMs(err);
+
+    if (status === 429 || status === 503) {
+      // Share the throttle signal with every instance, even if we stop here.
+      await coordinator.recordCooldown(retryAfterMs ?? computeBackoffDelay(attempt, this.policy, () => 1));
+    }
+
+    if (retryAfterMs !== null && retryAfterMs > this.policy.maxRetryAfterMs) {
+      return { stop: true, reason: RETRY_STOP_REASONS.RETRY_AFTER_TOO_LONG };
+    }
+
+    const delayMs = Math.max(computeBackoffDelay(attempt, this.policy, this.random), retryAfterMs ?? 0);
+    if (Date.now() + delayMs >= deadline) {
+      return { stop: true, reason: RETRY_STOP_REASONS.BUDGET_EXCEEDED };
+    }
+
+    const permit = await coordinator.acquireRetrySlot(operationName, {
+      leaseMs: delayMs + Math.max(deadline - Date.now(), 0),
+    });
+    if (!permit) {
+      recordMetric(() => horizonClientBackpressure.inc({ operation: operationName }));
+      return { stop: true, reason: RETRY_STOP_REASONS.RETRY_SLOTS_EXHAUSTED };
+    }
+
+    return { stop: false, delayMs, permit };
+  }
+
+  /**
+   * Wait out a shared rate-limit cooldown, never past the operation deadline.
    * @private
    */
-  _validateRequest(operation, operationName) {
+  async _waitForCooldown(coordinator, operationName, deadline) {
+    let remaining = 0;
     try {
-      validateOperationName(operationName);
-      validateOperation(operation);
-    } catch (err) {
-      const label = typeof operationName === "string" && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(operationName)
-        ? operationName
-        : "invalid";
-      horizonClientDataValidationErrors.inc({
-        operation: label,
-        validation_type: err.validationType ?? "unknown",
-      });
-      logger.error(
-        { operation: label, validationType: err.validationType },
-        "Horizon client: rejected invalid retry request"
-      );
-      throw err;
+      remaining = await coordinator.getCooldownRemainingMs();
+    } catch {
+      return;
     }
+    const waitMs = Math.min(remaining, Math.max(deadline - Date.now(), 0));
+    if (waitMs <= 0) return;
+    recordMetric(() => horizonClientRateLimitWaitTime.observe(waitMs / 1000));
+    logger.debug?.({ operation: operationName, waitMs }, "Horizon client: waiting for shared rate-limit cooldown");
+    await this.sleep(waitMs);
+  }
+
+  /** @private */
+  _finalError(err, operationName, context, horizonUrl, attempts, reason) {
+    const wrapped = handleError(err ?? new Error("Unknown Horizon error"), operationName, context, horizonUrl);
+    wrapped.attempts = attempts;
+    wrapped.retryStopReason = reason;
+    if (err?.code && !wrapped.code) wrapped.code = err.code;
+    return wrapped;
+  }
+
+  /** @private */
+  _observeAttempt(operationName, attempt, attemptStartTime) {
+    const attemptDuration = (Date.now() - attemptStartTime) / 1000;
+    recordMetric(() =>
+      horizonClientRetryAttemptDuration.observe({ operation: operationName, attempt: attempt + 1 }, attemptDuration),
+    );
   }
 
   /**
@@ -201,14 +305,13 @@ export class RetryManager {
    * @private
    */
   _recordSuccess(operationName, startTime) {
-    horizonClientOperations.inc({ 
-      operation: operationName, 
-      result: "success" 
-    });
-    horizonClientLatency.observe({ 
-      operation: operationName, 
-      result: "success" 
-    }, (Date.now() - startTime) / 1000);
+    recordMetric(() => horizonClientOperations.inc({ operation: operationName, result: "success" }));
+    recordMetric(() =>
+      horizonClientLatency.observe(
+        { operation: operationName, result: "success" },
+        (Date.now() - startTime) / 1000,
+      ),
+    );
   }
 
   /**
@@ -216,14 +319,8 @@ export class RetryManager {
    * @private
    */
   _recordError(operationName, err) {
-    horizonClientOperations.inc({ 
-      operation: operationName, 
-      result: "error" 
-    });
-    horizonClientErrors.inc({ 
-      operation: operationName, 
-      error_type: classifyError(err) 
-    });
+    recordMetric(() => horizonClientOperations.inc({ operation: operationName, result: "error" }));
+    recordMetric(() => horizonClientErrors.inc({ operation: operationName, error_type: classifyError(err) }));
   }
 
   /**
@@ -231,7 +328,22 @@ export class RetryManager {
    * @private
    */
   _recordRetry(operationName) {
-    horizonClientRetries.inc({ operation: operationName });
+    recordMetric(() => horizonClientRetries.inc({ operation: operationName }));
+  }
+
+  /**
+   * Only primitive context values reach the logs; nested objects are dropped
+   * so request payloads cannot leak through retry logging.
+   * @private
+   */
+  _safeContext(context) {
+    const safe = {};
+    for (const [key, value] of Object.entries(context ?? {})) {
+      if (value === null || ["string", "number", "boolean"].includes(typeof value)) {
+        safe[key] = value;
+      }
+    }
+    return safe;
   }
 
   /**
@@ -350,23 +462,40 @@ export class RetryManager {
    */
   _logRetry(operationName, attempt, delayMs, error, context) {
     logger.warn(
-      { 
-        operation: operationName, 
-        attempt, 
+      {
+        operation: operationName,
+        attempt,
         delayMs,
-        error: sanitizeErrorDetail(error?.message),
-        ...sanitizeContext(context),
+        status: getErrorStatus(error),
+        error: error?.message,
+        ...this._safeContext(context),
       },
-      "Horizon client: retrying operation after error"
+      "Horizon client: retrying operation after error",
+    );
+  }
+
+  /** @private */
+  _logGiveUp(operationName, attempts, reason, error, context) {
+    if (reason === RETRY_STOP_REASONS.NOT_RETRYABLE) return;
+    logger.warn(
+      {
+        operation: operationName,
+        attempts,
+        reason,
+        status: getErrorStatus(error),
+        error: error?.message,
+        ...this._safeContext(context),
+      },
+      "Horizon client: giving up on operation",
     );
   }
 
   /**
-   * Sleep helper
+   * Sleep helper (kept for compatibility with callers that stub it)
    * @private
    */
   _sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms));
+    return this.sleep(ms);
   }
 
   /**
@@ -375,8 +504,11 @@ export class RetryManager {
   getConfig() {
     return {
       retryDelays: this.retryDelays,
-      maxAttempts: this.retryDelays.length + 1,
+      maxAttempts: this.policy.maxRetries + 1,
       currentConcurrentOperations: this.concurrentOperations,
+      backoff: { ...this.policy },
+      concurrency: this.limiter.getStats(),
+      coordination: this.coordinator.getConfig(),
     };
   }
 }
@@ -384,6 +516,6 @@ export class RetryManager {
 /**
  * Create a retry manager with default configuration
  */
-export function createRetryManager(retryDelays, options) {
-  return new RetryManager(retryDelays, "", options);
+export function createRetryManager(retryDelays, options = {}) {
+  return new RetryManager(retryDelays, options);
 }

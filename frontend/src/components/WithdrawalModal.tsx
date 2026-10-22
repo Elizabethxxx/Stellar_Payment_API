@@ -1,18 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { Spinner } from "@/components/ui/Spinner";
 import { useSep24AnchorFlow } from "@/hooks/useSep24AnchorFlow";
 
-interface WithdrawalModalProps {
+export interface WithdrawalModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
 const DEFAULT_ANCHOR = "testanchor.stellar.org";
-const SUPPORTED_ASSETS = [
+export const SUPPORTED_ASSETS = [
   {
     code: "USDC",
     issuer: "GBBD67V63DU7D3SXXF4SOT5O7GNCGYL65B66S3YUKG6VCH3TFRZ7I7YQ",
@@ -32,6 +32,70 @@ export default function WithdrawalModal({
   });
   const [anchorDomain, setAnchorDomain] = useState(DEFAULT_ANCHOR);
   const [selectedAsset, setSelectedAsset] = useState(SUPPORTED_ASSETS[0]);
+  const modalRef = useRef<HTMLDivElement>(null);
+  const touchStartY = useRef<number | null>(null);
+
+  const reset = useCallback(() => {
+    resetFlow();
+  }, [resetFlow]);
+
+  const handleClose = useCallback(() => {
+    reset();
+    onClose();
+  }, [reset, onClose]);
+
+  // Touch gesture support for mobile drawer dismiss
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartY.current === null) return;
+    const deltaY = e.changedTouches[0].clientY - touchStartY.current;
+    if (deltaY > 50) {
+      handleClose();
+    }
+    touchStartY.current = null;
+  };
+
+  // Keyboard navigation, focus trap, and body scroll lock (WCAG 2.1 AA)
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        handleClose();
+        return;
+      }
+
+      if (e.key === "Tab" && modalRef.current) {
+        const focusable = modalRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen, handleClose]);
 
   const handleStartWithdrawal = async () => {
     try {
@@ -45,52 +109,70 @@ export default function WithdrawalModal({
     }
   };
 
-  const reset = () => {
-    resetFlow();
-  };
-
   if (!isOpen) return null;
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4">
+        {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          onClick={() => {
-            reset();
-            onClose();
-          }}
+          onClick={handleClose}
+          data-testid="withdrawal-backdrop"
+          aria-hidden="true"
           className="absolute inset-0 bg-black/80 backdrop-blur-sm"
         />
 
+        {/* Modal / Drawer Dialog */}
         <motion.div
-          initial={{ scale: 0.9, opacity: 0, y: 20 }}
+          ref={modalRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="withdrawal-modal-title"
+          aria-describedby="withdrawal-modal-subtitle"
+          data-testid="withdrawal-modal"
+          onTouchStart={handleTouchStart}
+          onTouchEnd={handleTouchEnd}
+          initial={{ scale: 0.95, opacity: 0, y: 30 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
-          exit={{ scale: 0.9, opacity: 0, y: 20 }}
-          className="relative w-full max-w-2xl overflow-hidden rounded-3xl border border-white/10 bg-black/80 shadow-2xl backdrop-blur-xl"
+          exit={{ scale: 0.95, opacity: 0, y: 30 }}
+          transition={{ type: "spring", damping: 25, stiffness: 300 }}
+          className="relative w-full max-w-2xl max-h-[90vh] sm:max-h-[85vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl border-t sm:border border-white/10 bg-black/90 sm:bg-black/80 shadow-2xl backdrop-blur-xl"
         >
+          {/* Mobile Drag Handle Indicator */}
+          <div
+            className="flex justify-center pt-3 pb-1 sm:hidden"
+            data-testid="withdrawal-drawer-handle"
+            aria-hidden="true"
+          >
+            <div className="h-1.5 w-12 rounded-full bg-white/20" />
+          </div>
+
           {/* Header */}
           <div className="flex items-center justify-between border-b border-white/10 p-6">
             <div>
-              <h2 className="text-xl font-bold text-white">Withdraw Funds</h2>
-              <p className="text-sm text-slate-400">
+              <h2 id="withdrawal-modal-title" className="text-xl font-bold text-white">
+                Withdraw Funds
+              </h2>
+              <p id="withdrawal-modal-subtitle" className="text-sm text-slate-400">
                 Via Stellar SEP-0024 Anchor
               </p>
             </div>
             <button
-              onClick={() => {
-                reset();
-                onClose();
-              }}
-              className="rounded-full p-2 text-slate-400 hover:bg-white/5 hover:text-white"
+              type="button"
+              onClick={handleClose}
+              data-testid="withdrawal-close-btn"
+              aria-label="Close withdrawal modal"
+              className="rounded-full p-2 text-slate-400 hover:bg-white/5 hover:text-white transition-colors focus:outline-none focus:ring-2 focus:ring-accent"
             >
               <svg
                 className="h-6 w-6"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                aria-hidden="true"
               >
                 <path
                   strokeLinecap="round"
@@ -107,15 +189,29 @@ export default function WithdrawalModal({
             {step === "IDLE" && (
               <div className="flex flex-col gap-6">
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  <label
+                    htmlFor="asset-selection-group"
+                    id="asset-selection-label"
+                    className="text-xs font-semibold uppercase tracking-wider text-slate-500"
+                  >
                     Select Asset
                   </label>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div
+                    id="asset-selection-group"
+                    role="radiogroup"
+                    aria-labelledby="asset-selection-label"
+                    className="grid grid-cols-2 gap-4"
+                  >
                     {SUPPORTED_ASSETS.map((asset) => (
                       <button
                         key={asset.code}
+                        type="button"
+                        role="radio"
+                        aria-checked={selectedAsset.code === asset.code}
+                        aria-label={`Select ${asset.code}`}
+                        data-testid={`asset-select-${asset.code}`}
                         onClick={() => setSelectedAsset(asset)}
-                        className={`flex flex-col items-center gap-2 rounded-2xl border p-4 transition-all ${
+                        className={`flex flex-col items-center gap-2 rounded-2xl border p-4 transition-all focus:outline-none focus:ring-2 focus:ring-accent ${
                           selectedAsset.code === asset.code
                             ? "border-accent bg-accent/5 ring-1 ring-accent"
                             : "border-white/10 bg-white/5 hover:border-white/20"
@@ -133,22 +229,29 @@ export default function WithdrawalModal({
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  <label
+                    htmlFor="anchor-domain-input"
+                    className="text-xs font-semibold uppercase tracking-wider text-slate-500"
+                  >
                     Anchor Domain
                   </label>
                   <input
+                    id="anchor-domain-input"
                     type="text"
                     value={anchorDomain}
                     onChange={(e) => setAnchorDomain(e.target.value)}
+                    data-testid="withdrawal-anchor-input"
                     className="w-full rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-accent"
                     placeholder="e.g. testanchor.stellar.org"
                   />
                 </div>
 
                 <button
+                  type="button"
                   onClick={handleStartWithdrawal}
                   disabled={isBusy}
-                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-4 text-sm font-bold text-black transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                  data-testid="withdrawal-submit-btn"
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-accent py-4 text-sm font-bold text-black transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-accent"
                 >
                   {isBusy ? (
                     <>
@@ -163,7 +266,12 @@ export default function WithdrawalModal({
             )}
 
             {(step === "CONNECTING" || step === "AUTH" || step === "SUBMITTING") && (
-              <div className="flex flex-col items-center justify-center py-10 text-center">
+              <div
+                role="status"
+                aria-live="polite"
+                data-testid="withdrawal-authenticating-status"
+                className="flex flex-col items-center justify-center py-10 text-center"
+              >
                 <div className="relative mb-6">
                   <div className="h-20 w-20 animate-ping rounded-full bg-accent/20" />
                   <div className="absolute inset-0 flex items-center justify-center">
@@ -179,9 +287,13 @@ export default function WithdrawalModal({
             )}
 
             {step === "READY" && interactiveUrl && (
-              <div className="h-[500px] w-full overflow-hidden rounded-xl border border-white/10 bg-white/5">
+              <div
+                data-testid="withdrawal-interactive-frame"
+                className="h-[500px] w-full overflow-hidden rounded-xl border border-white/10 bg-white/5"
+              >
                 <iframe
                   src={interactiveUrl}
+                  title="Stellar Anchor Withdrawal"
                   className="h-full w-full"
                 />
               </div>

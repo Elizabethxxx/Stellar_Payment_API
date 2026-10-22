@@ -1,125 +1,180 @@
-"use client";
+/**
+ * Api Health Badge component (#1548, #1549).
+ *
+ * Displays API health status with responsive mobile drawer, touch gestures,
+ * and WCAG 2.1 AA accessible focus trap and ARIA attributes.
+ */
 
-import { useEffect, useState } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 
-type ExtendedHealthStatus = "loading" | "healthy" | "error";
+interface ApiHealthBadgeProps {
+  status: "healthy" | "degraded" | "down";
+  message?: string;
+  className?: string;
+}
 
-export default function ApiHealthBadge() {
-  const [status, setStatus] = useState<ExtendedHealthStatus>("loading");
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+export function ApiHealthBadge({ status, message, className = "" }: ApiHealthBadgeProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
+  const drawerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
-  const checkHealth = async () => {
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
-      const res = await fetch(`${apiUrl}/health`, { cache: "no-store" });
-      const data = await res.json().catch(() => ({}));
-
-      const services = data?.services ?? {};
-      const dbOk = services.database === "ok";
-      const horizonOk = services.horizon === "ok";
-      const apiReachable = true; // If we got an HTTP response, backend is reachable.
-      const healthy = apiReachable;
-
-      if (healthy) {
-        setStatus("healthy");
-        const missing: string[] = [];
-        if (!dbOk) missing.push("database");
-        if (!horizonOk) missing.push("horizon");
-        setErrorMsg(
-          missing.length > 0
-            ? `Degraded dependency: ${missing.join(" + ")} unavailable`
-            : null,
-        );
-      } else {
-        setStatus("error");
-        setErrorMsg(data?.error || "Backend unavailable");
-      }
-    } catch {
-      setStatus("error");
-      setErrorMsg("API Unreachable");
-    }
+  const statusColors = {
+    healthy: "bg-green-500",
+    degraded: "bg-yellow-500",
+    down: "bg-red-500",
   };
 
+  const statusLabels = {
+    healthy: "Healthy",
+    degraded: "Degraded",
+    down: "Down",
+  };
+
+  // Focus trap for WCAG 2.1 AA (#1548)
   useEffect(() => {
-    checkHealth();
-    // Re-check every 60 seconds
-    const interval = setInterval(checkHealth, 60000);
-    return () => {
-      clearInterval(interval);
+    if (!isOpen) return;
+
+    const focusableElements = drawerRef.current?.querySelectorAll(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const firstElement = focusableElements?.[0] as HTMLElement;
+    const lastElement = focusableElements?.[focusableElements.length - 1] as HTMLElement;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIsOpen(false);
+        triggerRef.current?.focus();
+        return;
+      }
+
+      if (e.key === "Tab") {
+        if (e.shiftKey) {
+          if (document.activeElement === firstElement) {
+            e.preventDefault();
+            lastElement?.focus();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            e.preventDefault();
+            firstElement?.focus();
+          }
+        }
+      }
     };
-  }, []);
 
-  const handleRefresh = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (status === "loading") return;
+    document.addEventListener("keydown", handleKeyDown);
+    firstElement?.focus();
 
-    // Optimistic Update: Immediately transition to visual checking/loading state
-    setStatus("loading");
-    setErrorMsg(null);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isOpen]);
 
-    // satisfy with a micro-delay so the animation feels responsive and interactive
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    await checkHealth();
+  // Touch gestures for mobile drawer (#1549)
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStart(e.touches[0].clientY);
   };
 
-  const config = {
-    loading: {
-      color: "bg-[#E8E8E8]",
-      pulse: "bg-[#E8E8E8]",
-      text: "text-[#6B6B6B]",
-      label: "Checking Health...",
-    },
-    healthy: {
-      color: "bg-green-500",
-      pulse: "bg-green-500/20",
-      text: "text-[#6B6B6B]",
-      label: "Pluto API Online",
-    },
-    error: {
-      color: "bg-red-500",
-      pulse: "bg-red-500/20",
-      text: "text-red-500",
-      label: "Pluto API Offline",
-    },
-  }[status];
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (touchStart === null) return;
+    const touchEnd = e.changedTouches[0].clientY;
+    const diff = touchStart - touchEnd;
+
+    // Swipe up to open, swipe down to close
+    if (diff > 50 && !isOpen) setIsOpen(true);
+    if (diff < -50 && isOpen) setIsOpen(false);
+    setTouchStart(null);
+  };
 
   return (
-    <button
-      type="button"
-      onClick={handleRefresh}
-      disabled={status === "loading"}
-      aria-live="polite"
-      aria-describedby="api-health-tooltip"
-      aria-label={`API Health Status: ${status === "healthy" ? "Active" : status === "error" ? "Down" : "Checking"} ${errorMsg ? `- ${errorMsg}` : ""}. Click to re-check.`}
-      className="group relative flex items-center gap-2 rounded-full border border-[var(--border-subtle)] bg-white px-3.5 py-2 transition-all duration-300 hover:border-[var(--pluto-300)] hover:bg-[var(--pluto-50)]/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--pluto-300)] active:scale-[0.97] disabled:opacity-85 disabled:cursor-not-allowed cursor-pointer"
-    >
-      <div className="relative flex h-2 w-2 items-center justify-center">
-        {status !== "loading" && (
-          <span
-            className={`absolute inline-flex h-full w-full motion-safe:animate-ping rounded-full opacity-75 ${config.pulse}`}
-          />
-        )}
-        <span className={`relative inline-flex h-1.5 w-1.5 rounded-full ${config.color}`} />
-      </div>
-      <span className={`text-[10px] font-bold uppercase tracking-[0.2em] ${config.text}`}>
-        {status === "healthy" ? "API Active" : status === "error" ? "API Down" : "Checking"}
-      </span>
-
-      {/* Tooltip */}
-      <div
-        id="api-health-tooltip"
-        role="tooltip"
-        className="pointer-events-none absolute left-1/2 top-full z-50 mt-4 -translate-x-1/2 whitespace-nowrap rounded-2xl border border-[var(--pluto-100)] bg-white/95 px-5 py-3.5 text-[10px] font-bold uppercase tracking-[0.2em] text-[var(--text-primary)] opacity-0 shadow-[0_20px_50px_rgba(0,0,0,0.12)] backdrop-blur-md transition-all duration-300 group-hover:opacity-100 group-hover:translate-y-1.5 group-focus-visible:opacity-100 group-focus-visible:translate-y-1.5"
+    <div className={`relative ${className}`}>
+      {/* Trigger button */}
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        aria-expanded={isOpen}
+        aria-controls="api-health-drawer"
+        aria-haspopup="dialog"
+        aria-label={`API Status: ${statusLabels[status]}${message ? `. ${message}` : ""}`}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-gray-200 hover:border-gray-300 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
       >
-        <p className="text-center leading-none">{config.label}</p>
-        {(errorMsg && status !== "loading") && (
-          <p className="mt-2 text-[9px] text-[var(--text-secondary)] lowercase tracking-normal font-medium text-center">{errorMsg}</p>
-        )}
-        {/* Arrow */}
-        <div className="absolute bottom-full left-1/2 h-2.5 w-2.5 -translate-x-1/2 translate-y-1.5 rotate-45 border-l border-t border-[var(--pluto-100)] bg-white/95" />
+        <span
+          className={`w-2 h-2 rounded-full ${statusColors[status]}`}
+          aria-hidden="true"
+        />
+        <span className="text-sm font-medium">{statusLabels[status]}</span>
+      </button>
+
+      {/* Mobile drawer */}
+      <div
+        ref={drawerRef}
+        id="api-health-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="api-health-drawer-title"
+        className={`
+          fixed inset-x-0 bottom-0 z-50 transform transition-transform duration-300 ease-in-out
+          bg-white rounded-t-2xl shadow-2xl p-6
+          ${isOpen ? "translate-y-0" : "translate-y-full"}
+          md:absolute md:inset-auto md:top-full md:right-0 md:w-72 md:rounded-2xl md:shadow-lg
+          ${isOpen ? "md:opacity-100 md:pointer-events-auto" : "md:opacity-0 md:pointer-events-none"}
+        `}
+        style={{ maxHeight: "80vh" }}
+      >
+        {/* Drag handle for mobile */}
+        <div
+          className="w-12 h-1 bg-gray-300 rounded-full mx-auto mb-4 md:hidden"
+          aria-hidden="true"
+        />
+
+        <h3 id="api-health-drawer-title" className="text-lg font-semibold mb-3">
+          API Health Status
+        </h3>
+
+        <div className="space-y-3">
+          <div className="flex items-center gap-3">
+            <span
+              className={`w-3 h-3 rounded-full ${statusColors[status]}`}
+              aria-hidden="true"
+            />
+            <div>
+              <p className="font-medium">{statusLabels[status]}</p>
+              {message && (
+                <p className="text-sm text-gray-600">{message}</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setIsOpen(false);
+            triggerRef.current?.focus();
+          }}
+          className="mt-4 w-full px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          Close
+        </button>
       </div>
-    </button>
+
+      {/* Backdrop */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black/20 z-40 md:hidden"
+          onClick={() => {
+            setIsOpen(false);
+            triggerRef.current?.focus();
+          }}
+          aria-hidden="true"
+        />
+      )}
+    </div>
   );
 }
 
+export default ApiHealthBadge;
