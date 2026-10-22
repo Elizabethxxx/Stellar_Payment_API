@@ -14,6 +14,7 @@ import { BellIcon, XMarkIcon } from "@heroicons/react/24/outline";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslations } from "next-intl";
 import { useNotificationCenter, type Notification } from "@/hooks/useNotificationCenter";
+import { useFocusTrap } from "@/hooks/useFocusTrap";
 
 // ─── Panel ────────────────────────────────────────────────────────────────────
 // Accepts state via props so it can be tree-shaken / dynamic-imported separately
@@ -22,17 +23,27 @@ interface NotificationPanelProps {
   notifications: Notification[];
   unreadCount: number;
   handleDismiss: (id: string) => void;
+  onClose: () => void;
 }
 
 export function NotificationPanel({
   notifications,
   unreadCount,
   handleDismiss,
+  onClose,
 }: NotificationPanelProps) {
   const t = useTranslations("notificationCenter");
 
+  // WCAG 2.1 AA focus trap implementation (#1497)
+  const trapRef = useFocusTrap<HTMLDivElement>({
+    enabled: true,
+    onEscape: onClose,
+    returnFocusOnDeactivate: true,
+  });
+
   return (
     <motion.div
+      ref={trapRef}
       initial={{ opacity: 0, y: -8, scale: 0.96 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -8, scale: 0.96 }}
@@ -53,20 +64,44 @@ export function NotificationPanel({
       role="dialog"
       aria-modal="true"
       aria-label={t("panelLabel")}
+      aria-describedby="notification-center-description"
     >
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-[10px] font-bold text-[#0A0A0A] uppercase tracking-widest leading-none">
+      <div className="flex items-center justify-between mb-2">
+        <h3
+          id="notification-center-title"
+          className="text-[10px] font-bold text-[#0A0A0A] uppercase tracking-widest leading-none"
+        >
           {t("heading")}
         </h3>
-        <span
-          className="text-[10px] font-medium text-[#6B6B6B] bg-[#F5F5F5] px-2 py-0.5 rounded-full"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {t("unreadCount", { count: unreadCount })}
-        </span>
+        <div className="flex items-center gap-2">
+          <span
+            className="text-[10px] font-medium text-[#6B6B6B] bg-[#F5F5F5] px-2 py-0.5 rounded-full"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            {t("unreadCount", { count: unreadCount })}
+          </span>
+          <button
+            onClick={onClose}
+            className={[
+              "p-1.5 rounded-lg",
+              "text-[#6B6B6B] hover:text-[#0A0A0A]",
+              "hover:bg-[#F5F5F5]",
+              "transition-colors duration-150",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00F5D4]/60",
+            ].join(" ")}
+            aria-label={t("closePanel")}
+          >
+            <XMarkIcon className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
       </div>
+
+      {/* Screen reader description */}
+      <p id="notification-center-description" className="sr-only">
+        {t("panelDescription")}
+      </p>
 
       {/* Notification list */}
       <div
@@ -113,10 +148,13 @@ export function NotificationPanel({
                     "hover:bg-[#E8E8E8]",
                     "opacity-0 group-hover:opacity-100 focus:opacity-100",
                     "transition-opacity duration-150",
-                    // Minimum touch target
-                    "min-h-[32px] min-w-[32px] flex items-center justify-center",
+                    // Minimum touch target (WCAG 2.5.5)
+                    "min-h-[44px] min-w-[44px] flex items-center justify-center",
+                    // Focus visible styles
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#00F5D4]/60",
                   ].join(" ")}
                   aria-label={t("dismissLabel", { message: notif.message })}
+                  tabIndex={0}
                 >
                   <XMarkIcon className="h-3.5 w-3.5" aria-hidden="true" />
                 </button>
@@ -208,6 +246,7 @@ export function NotificationCenter() {
             notifications={notifications}
             unreadCount={unreadCount}
             handleDismiss={handleDismiss}
+            onClose={toggleOpen}
           />
         )}
       </AnimatePresence>

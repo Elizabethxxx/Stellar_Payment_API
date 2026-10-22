@@ -157,6 +157,8 @@ export default function CommandPalette() {
   const [executingId, setExecutingId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previousActiveElementRef = useRef<HTMLElement | null>(null);
   const router = useRouter();
   const apiKey = useMerchantApiKey();
   const { toggleTheme } = useThemeActions();
@@ -182,7 +184,14 @@ export default function CommandPalette() {
       setActiveIndex(0);
       setView("commands");
       setExecutingId(null);
+      // Store the previously focused element to restore focus on close
+      previousActiveElementRef.current = document.activeElement as HTMLElement;
       requestAnimationFrame(() => inputRef.current?.focus());
+    } else {
+      // Restore focus to the previously focused element when dialog closes
+      if (previousActiveElementRef.current) {
+        previousActiveElementRef.current.focus();
+      }
     }
   }, [open]);
 
@@ -195,6 +204,41 @@ export default function CommandPalette() {
     const activeItem = listRef.current.children[activeIndex] as HTMLElement | undefined;
     activeItem?.scrollIntoView({ block: "nearest" });
   }, [activeIndex, filtered.length]);
+
+  // WCAG 2.1 AA Focus Trap: Prevent focus from leaving the dialog
+  useEffect(() => {
+    if (!open || !dialogRef.current) return;
+
+    const handleTabKey = (e: KeyboardEvent) => {
+      if (e.key !== "Tab") return;
+
+      const focusableElements = dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+
+      if (!focusableElements || focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (e.shiftKey) {
+        // Shift+Tab: if focus is on first element, move to last
+        if (document.activeElement === firstElement) {
+          e.preventDefault();
+          lastElement.focus();
+        }
+      } else {
+        // Tab: if focus is on last element, move to first
+        if (document.activeElement === lastElement) {
+          e.preventDefault();
+          firstElement.focus();
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleTabKey);
+    return () => document.removeEventListener("keydown", handleTabKey);
+  }, [open]);
 
   const select = useCallback(
     async (command: PaletteCommand) => {
@@ -339,9 +383,11 @@ export default function CommandPalette() {
       onClick={() => setOpen(false)}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-label="Command palette"
         aria-modal="true"
+        aria-describedby="command-description"
         className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-[#1F1F1F] bg-black shadow-[0_30px_60px_rgba(0,0,0,0.8)] backdrop-blur-xl"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={handlePaletteKeydown}
@@ -350,6 +396,11 @@ export default function CommandPalette() {
           <AssetConverter onBack={() => setView("commands")} />
         ) : (
           <>
+            {/* Hidden description for screen readers */}
+            <span id="command-description" className="sr-only">
+              Command palette dialog. Use arrow keys to navigate, Enter to select, Escape to close. Tab cycles through focusable elements.
+            </span>
+
             <div className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
               <svg
                 viewBox="0 0 24 24"

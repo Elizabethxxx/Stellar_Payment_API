@@ -1,0 +1,285 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`CheckoutQrModal > snapshots > matches snapshot when modal is closed (renders nothing) 1`] = `<div />`;
+
+exports[`CheckoutQrModal > snapshots > matches snapshot when modal is open 1`] = `
+<div>
+  <div
+    aria-hidden="true"
+    class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity"
+    data-testid="modal-backdrop"
+  />
+  <div
+    aria-labelledby=":rn:"
+    aria-modal="true"
+    class="dark fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl transition-all focus:outline-none"
+    data-testid="modal-content"
+    role="dialog"
+    tabindex="-1"
+  >
+    <div
+      class="flex items-center justify-between border-b border-white/10 pb-4 mb-4"
+    >
+      <p
+        class="font-mono text-xs uppercase tracking-[0.3em] text-mint"
+        id=":rn:"
+      >
+        Payment QR Code
+      </p>
+      <button
+        aria-label="Close Payment QR Code"
+        class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
+        data-testid="modal-close"
+        type="button"
+      >
+        <svg
+          aria-hidden="true"
+          class="h-5 w-5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M6 18L18 6M6 6l12 12"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+          />
+        </svg>
+      </button>
+    </div>
+    <div
+      class="text-white"
+    >
+      <div
+        class="flex flex-col gap-5"
+      >
+        <p
+          class="text-sm text-[#6B6B6B]"
+        >
+          Scan this QR code with your Stellar-compatible wallet to complete the payment.
+        </p>
+        <div
+          class="flex items-center justify-center rounded-2xl border border-[#E8E8E8] bg-white p-5 transition-all hover:border-[var(--pluto-400)] hover:shadow-lg hover:shadow-[var(--pluto-400)]/10"
+        >
+          <canvas
+            data-level="H"
+            data-size="512"
+            data-testid="qr-canvas"
+            data-value="stellar:GABC...XYZ?amount=10.00&asset_code=USDC"
+            height="512"
+            width="512"
+          />
+        </div>
+        <button
+          class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[var(--pluto-200)] bg-[var(--pluto-50)] px-4 font-bold uppercase tracking-widest text-xs text-[var(--pluto-700)] transition-all hover:bg-[var(--pluto-100)] hover:border-[var(--pluto-400)] hover:shadow-md hover:shadow-[var(--pluto-500)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pluto-300)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+          type="button"
+        >
+          <svg
+            class="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v1a2 2 0 002 2h12a2 2 0 002-2v-1"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+          Download QR
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`CheckoutQrModal > snapshots > matches snapshot with a custom paymentId 1`] = `
+<div>
+  <div
+    aria-hidden="true"
+    class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity"
+    data-testid="modal-backdrop"
+  />
+  <div
+    aria-labelledby=":rq:"
+    aria-modal="true"
+    class="dark fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl transition-all focus:outline-none"
+    data-testid="modal-content"
+    role="dialog"
+    tabindex="-1"
+  >
+    <div
+      class="flex items-center justify-between border-b border-white/10 pb-4 mb-4"
+    >
+      <p
+        class="font-mono text-xs uppercase tracking-[0.3em] text-mint"
+        id=":rq:"
+      >
+        Payment QR Code
+      </p>
+      <button
+        aria-label="Close Payment QR Code"
+        class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
+        data-testid="modal-close"
+        type="button"
+      >
+        <svg
+          aria-hidden="true"
+          class="h-5 w-5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M6 18L18 6M6 6l12 12"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+          />
+        </svg>
+      </button>
+    </div>
+    <div
+      class="text-white"
+    >
+      <div
+        class="flex flex-col gap-5"
+      >
+        <p
+          class="text-sm text-[#6B6B6B]"
+        >
+          Scan this QR code with your Stellar-compatible wallet to complete the payment.
+        </p>
+        <div
+          class="flex items-center justify-center rounded-2xl border border-[#E8E8E8] bg-white p-5 transition-all hover:border-[var(--pluto-400)] hover:shadow-lg hover:shadow-[var(--pluto-400)]/10"
+        >
+          <canvas
+            data-level="H"
+            data-size="512"
+            data-testid="qr-canvas"
+            data-value="stellar:GABC...XYZ?amount=10.00&asset_code=USDC"
+            height="512"
+            width="512"
+          />
+        </div>
+        <button
+          class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[var(--pluto-200)] bg-[var(--pluto-50)] px-4 font-bold uppercase tracking-widest text-xs text-[var(--pluto-700)] transition-all hover:bg-[var(--pluto-100)] hover:border-[var(--pluto-400)] hover:shadow-md hover:shadow-[var(--pluto-500)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pluto-300)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+          type="button"
+        >
+          <svg
+            class="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v1a2 2 0 002 2h12a2 2 0 002-2v-1"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+          Download QR
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`CheckoutQrModal > snapshots > matches snapshot with a custom qrValue 1`] = `
+<div>
+  <div
+    aria-hidden="true"
+    class="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity"
+    data-testid="modal-backdrop"
+  />
+  <div
+    aria-labelledby=":rp:"
+    aria-modal="true"
+    class="dark fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10 bg-slate-900 p-6 shadow-2xl transition-all focus:outline-none"
+    data-testid="modal-content"
+    role="dialog"
+    tabindex="-1"
+  >
+    <div
+      class="flex items-center justify-between border-b border-white/10 pb-4 mb-4"
+    >
+      <p
+        class="font-mono text-xs uppercase tracking-[0.3em] text-mint"
+        id=":rp:"
+      >
+        Payment QR Code
+      </p>
+      <button
+        aria-label="Close Payment QR Code"
+        class="rounded-lg p-2 text-slate-400 transition-colors hover:bg-white/10 hover:text-white"
+        data-testid="modal-close"
+        type="button"
+      >
+        <svg
+          aria-hidden="true"
+          class="h-5 w-5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            d="M6 18L18 6M6 6l12 12"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            stroke-width="2"
+          />
+        </svg>
+      </button>
+    </div>
+    <div
+      class="text-white"
+    >
+      <div
+        class="flex flex-col gap-5"
+      >
+        <p
+          class="text-sm text-[#6B6B6B]"
+        >
+          Scan this QR code with your Stellar-compatible wallet to complete the payment.
+        </p>
+        <div
+          class="flex items-center justify-center rounded-2xl border border-[#E8E8E8] bg-white p-5 transition-all hover:border-[var(--pluto-400)] hover:shadow-lg hover:shadow-[var(--pluto-400)]/10"
+        >
+          <canvas
+            data-level="H"
+            data-size="512"
+            data-testid="qr-canvas"
+            data-value="stellar:GCUSTOM...XYZ?amount=99.99"
+            height="512"
+            width="512"
+          />
+        </div>
+        <button
+          class="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-[var(--pluto-200)] bg-[var(--pluto-50)] px-4 font-bold uppercase tracking-widest text-xs text-[var(--pluto-700)] transition-all hover:bg-[var(--pluto-100)] hover:border-[var(--pluto-400)] hover:shadow-md hover:shadow-[var(--pluto-500)]/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--pluto-300)] focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+          type="button"
+        >
+          <svg
+            class="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M12 3v12m0 0 4-4m-4 4-4-4M4 17v1a2 2 0 002 2h12a2 2 0 002-2v-1"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+          Download QR
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+`;

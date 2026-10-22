@@ -20,6 +20,13 @@
  *     shares one retry loop. Missing paths and other deterministic failures
  *     are not retried.
  *
+ * Payload sanitization (issue #1442):
+ *   - Request parameters are strictly validated and canonicalised before they
+ *     form a cache key or reach Horizon (400 ExchangeRateValidationError).
+ *   - Every quote is rebuilt from an allow-list of fields before it is cached
+ *     or returned, and quotes read from the shared Redis store go through the
+ *     same check, so a malformed or tampered entry is never served.
+ *
  * The route handler calls getExchangeRateQuote() and only handles HTTP concerns;
  * all exchange-rate logic lives here.
  */
@@ -32,6 +39,13 @@ import {
 import { ExchangeRateCoordinator } from '../lib/exchange-rate-coordinator.js';
 import { withOracleRetry } from '../lib/exchange-rate-oracle-retry.js';
 import { logger } from '../lib/logger.js';
+import {
+  sanitizeQuote,
+  sanitizeQuoteRequest,
+  ExchangeRateValidationError,
+} from '../lib/exchange-rate-oracle-sanitizer.js';
+
+export { ExchangeRateValidationError };
 
 const DEFAULT_SLIPPAGE = parseFloat(process.env.PATH_PAYMENT_SLIPPAGE ?? '0.01');
 
@@ -57,7 +71,7 @@ export function configureExchangeRateCoordination({ redisClient, ...options } = 
     coordinator = null;
     return false;
   }
-  coordinator = new ExchangeRateCoordinator({ redisClient, ...options });
+  coordinator = new ExchangeRateCoordinator({ redisClient, sanitize: sanitizeQuote, ...options });
   logger.info('Exchange-rate cache distributed coordination enabled');
   return true;
 }
@@ -95,15 +109,17 @@ export class NoPathFoundError extends ExchangeRateError {
  * @param {number} [params.slippage]
  * @returns {Promise<ExchangeRateQuote>}
  */
-export async function getExchangeRateQuote({
-  sourceAssetCode,
-  sourceAssetIssuer = null,
-  destAssetCode,
-  destAssetIssuer = null,
-  destAmount,
-  sourceAccount = null,
-  slippage = DEFAULT_SLIPPAGE,
-}) {
+export async function getExchangeRateQuote(params) {
+  const {
+    sourceAssetCode,
+    sourceAssetIssuer,
+    destAssetCode,
+    destAssetIssuer,
+    destAmount,
+    sourceAccount,
+    slippage,
+  } = sanitizeQuoteRequest({ slippage: DEFAULT_SLIPPAGE, ...(params ?? {}) });
+
   const cache = getExchangeRateCache();
   const cacheKey = generateRateCacheKey(
     sourceAssetCode,
@@ -188,7 +204,46 @@ async function fetchQuoteFromHorizon({
     cached:                  false,
   };
 
-  return quote;
+  const sanitized = sanitizeQuote(quote);
+  if (!sanitized) {
+    logger.warn(
+      { sourceAsset: sourceAssetCode, destAsset: destAssetCode, hops: Array.isArray(path.path) ? path.path.length : null },
+      'Rejected malformed exchange rate quote from Horizon',
+    );
+    const error = new ExchangeRateError('Horizon returned an invalid exchange rate quote', 502);
+    error.status = 502;
+    // The same Horizon answer would be rejected again; do not retry it.
+    error.retryable = false;
+    throw error;
+  }
+  return sanitized;
+}
+
+/**
+ * Cache key for possibly-unsanitized parameters. Invalidation must never
+ * throw, so input that fails strict validation falls back to the raw key
+ * (it can only match an entry that was never written).
+ */
+function resolveCacheKey(sourceAsset, destAsset, destAmount, sourceAssetIssuer, destAssetIssuer) {
+  try {
+    const clean = sanitizeQuoteRequest({
+      sourceAssetCode: sourceAsset,
+      sourceAssetIssuer,
+      destAssetCode: destAsset,
+      destAssetIssuer,
+      destAmount,
+      slippage: 0,
+    });
+    return generateRateCacheKey(
+      clean.sourceAssetCode,
+      clean.destAssetCode,
+      clean.destAmount,
+      clean.sourceAssetIssuer,
+      clean.destAssetIssuer,
+    );
+  } catch {
+    return generateRateCacheKey(sourceAsset, destAsset, destAmount, sourceAssetIssuer, destAssetIssuer);
+  }
 }
 
 /**
@@ -203,7 +258,7 @@ export function invalidateExchangeRateQuote(
   destAssetIssuer = null,
 ) {
   const cache = getExchangeRateCache();
-  const key = generateRateCacheKey(sourceAsset, destAsset, destAmount, sourceAssetIssuer, destAssetIssuer);
+  const key = resolveCacheKey(sourceAsset, destAsset, destAmount, sourceAssetIssuer, destAssetIssuer);
   const removed = cache.delete(key);
 
   // Propagate to peers via the shared store. Fire-and-forget keeps this

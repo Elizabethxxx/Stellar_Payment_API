@@ -22,6 +22,8 @@ import {
   type CreatedPayment,
 } from "@/lib/create-payment-flow";
 import { useLocalStorage } from "@/hooks/useLocalStorage";
+import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { KeyboardShortcutsHelp } from "./KeyboardShortcutsHelp";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
@@ -171,14 +173,20 @@ interface SuccessCardProps {
   created: CreatedPayment;
   onReset: () => void;
   t: ReturnType<typeof useTranslations>;
+  isOptimistic?: boolean;
 }
 
-function SuccessCard({ created, onReset, t }: SuccessCardProps) {
+function SuccessCard({ created, onReset, t, isOptimistic = false }: SuccessCardProps) {
   const [showQrModal, setShowQrModal] = useState(false);
+  const prevOptimisticRef = useRef(isOptimistic);
 
   useEffect(() => {
-    fireConfetti();
-  }, []);
+    // Fire confetti when transitioning from optimistic to confirmed
+    if (prevOptimisticRef.current && !isOptimistic) {
+      fireConfetti();
+    }
+    prevOptimisticRef.current = isOptimistic;
+  }, [isOptimistic]);
 
   const handleCopyAndOpenQr = async () => {
     try {
@@ -209,6 +217,40 @@ function SuccessCard({ created, onReset, t }: SuccessCardProps) {
         exit="exit"
         className="flex flex-col gap-6"
       >
+        {/* Optimistic state indicator */}
+        {isOptimistic && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="rounded-xl border border-yellow-500/30 bg-yellow-500/10 p-3 backdrop-blur"
+          >
+            <div className="flex items-center gap-3">
+              <svg
+                className="h-4 w-4 animate-spin text-yellow-400"
+                viewBox="0 0 24 24"
+                fill="none"
+              >
+                <circle
+                  className="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  strokeWidth="4"
+                />
+                <path
+                  className="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                />
+              </svg>
+              <p className="text-sm font-medium text-yellow-200">
+                Confirming payment on the network...
+              </p>
+            </div>
+          </motion.div>
+        )}
+
         {/* Main card */}
         <motion.div
           variants={childVariants}
@@ -428,7 +470,8 @@ export default function CreatePaymentForm() {
     amount.trim().length > 0 &&
     recipient.trim().length > 0;
   const isSubmitting = paymentFlow.stage === "submitting";
-  const isSuccessView = paymentFlow.stage === "success" && !!paymentFlow.created;
+  const isOptimistic = paymentFlow.stage === "optimistic";
+  const isSuccessView = (paymentFlow.stage === "success" || paymentFlow.stage === "optimistic") && !!paymentFlow.created;
 
   // ── Rate-limit countdown ──────────────────────────────────
   const [retryAfter, setRetryAfter] = useState(0);
@@ -456,6 +499,32 @@ export default function CreatePaymentForm() {
       if (retryTimerRef.current) clearInterval(retryTimerRef.current);
     };
   }, [retryAfter]);
+  // ──────────────────────────────────────────────────────────
+
+  // ── Rollback state restoration ────────────────────────────
+  useEffect(() => {
+    if (paymentFlow.stage === "rollback" && paymentFlow.savedFormState) {
+      const saved = paymentFlow.savedFormState;
+      // Restore all form fields
+      setAmount(saved.amount);
+      setAsset(saved.asset);
+      setRecipient(saved.recipient);
+      setDescription(saved.description);
+      setUseSessionBranding(saved.useSessionBranding);
+      setBranding(saved.branding);
+      setSelectedTrustedAddress(saved.selectedTrustedAddress);
+
+      // Show rollback error
+      if (paymentFlow.rollbackError) {
+        setError(paymentFlow.rollbackError);
+      }
+
+      // Clear rollback state after restoring
+      setTimeout(() => {
+        dispatchPaymentFlow({ type: "clear_rollback_error" });
+      }, 100);
+    }
+  }, [paymentFlow.stage, paymentFlow.savedFormState, paymentFlow.rollbackError]);
   // ──────────────────────────────────────────────────────────
 
   const handleSubmit = async (e: FormEvent) => {
@@ -491,8 +560,32 @@ export default function CreatePaymentForm() {
         body.branding_overrides = branding;
       }
 
-      dispatchPaymentFlow({ type: "submit" });
+      // Save current form state for potential rollback
+      const savedFormState = {
+        amount,
+        asset,
+        recipient,
+        description,
+        useSessionBranding,
+        branding,
+        selectedTrustedAddress,
+      };
 
+      // Generate optimistic payment object
+      const optimisticPayment = {
+        payment_id: `optimistic-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+        payment_link: `${API_URL}/checkout/optimistic-pending`,
+        status: "pending",
+      };
+
+      // Show success UI immediately (optimistic update)
+      dispatchPaymentFlow({
+        type: "optimistic",
+        created: optimisticPayment,
+        savedFormState,
+      });
+
+      // Make API call in background
       const res = await fetch(`${API_URL}/api/create-payment`, {
         method: "POST",
         headers: {
@@ -503,15 +596,23 @@ export default function CreatePaymentForm() {
       });
 
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? t("failedCreate"));
 
-      dispatchPaymentFlow({ type: "success", created: data });
+      if (!res.ok) {
+        const errorMessage = data.error ?? t("failedCreate");
+        // Roll back to form with error message
+        dispatchPaymentFlow({ type: "rollback", error: errorMessage });
+        toast.error(t("rollbackMessage"));
+        return;
+      }
+
+      // Replace optimistic payment with real data and fire confetti
+      dispatchPaymentFlow({ type: "confirm_success", created: data });
       toast.success(t("createdToast"));
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : t("failedCreate");
-      dispatchPaymentFlow({ type: "failure" });
-      setError(message);
-      toast.error(message);
+      // Network error - roll back to form
+      dispatchPaymentFlow({ type: "rollback", error: message });
+      toast.error(t("networkErrorRollback"));
     }
   };
 
@@ -530,6 +631,52 @@ export default function CreatePaymentForm() {
     setWebhookUrlError(null);
     setRetryAfter(0);
   };
+
+  // #1566 - Keyboard shortcuts for improved navigation and accessibility
+  const keyboardShortcuts = [
+    {
+      key: "Enter",
+      ctrl: true,
+      meta: true, // Cmd on Mac, Ctrl on Windows/Linux
+      handler: (e: KeyboardEvent) => {
+        e.preventDefault();
+        if (paymentFlow.status !== "submitting" && paymentFlow.status !== "success") {
+          const formEl = document.querySelector("form");
+          if (formEl) {
+            formEl.dispatchEvent(new Event("submit", { cancelable: true, bubbles: true }));
+          }
+        }
+      },
+      description: "Submit payment",
+    },
+    {
+      key: "k",
+      ctrl: true,
+      meta: true,
+      handler: (e: KeyboardEvent) => {
+        e.preventDefault();
+        if (paymentFlow.status !== "submitting") {
+          handleReset();
+          toast.success("Form cleared");
+        }
+      },
+      description: "Clear form",
+    },
+    {
+      key: "Escape",
+      handler: (e: KeyboardEvent) => {
+        if (paymentFlow.status === "success") {
+          e.preventDefault();
+          handleReset();
+        }
+      },
+      description: "Close success modal",
+    },
+  ];
+
+  useKeyboardShortcuts(keyboardShortcuts, {
+    enabled: hydrated && !!apiKey,
+  });
 
   const handleTrustedAddressSelect = (addressId: string) => {
     setSelectedTrustedAddress(addressId);
@@ -578,6 +725,7 @@ export default function CreatePaymentForm() {
           created={paymentFlow.created}
           onReset={handleReset}
           t={t}
+          isOptimistic={isOptimistic}
         />
       ) : (
         <motion.div
@@ -651,6 +799,14 @@ export default function CreatePaymentForm() {
               {error}
             </motion.div>
           )}
+
+          {/* Keyboard shortcuts help (#1566) */}
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-slate-500">
+              Tip: Use keyboard shortcuts for faster navigation
+            </div>
+            <KeyboardShortcutsHelp shortcuts={keyboardShortcuts} position="bottom" />
+          </div>
 
           <div className="flex flex-col gap-4">
             {/* Amount */}

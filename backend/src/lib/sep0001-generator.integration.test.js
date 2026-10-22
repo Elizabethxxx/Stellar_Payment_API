@@ -6,7 +6,7 @@ const BASE_MERCHANT = {
   business_name: "Integration Test Merchant",
   email: "merchant@integration.example.com",
   notification_email: "notify@integration.example.com",
-  recipient: "GBUQWP3BOUZX34ULNQG23RQ6F4YUSXHTQSXUSMIQSTBE2BRUY4DQAT2B",
+  recipient: "GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57",
   branding_config: {
     homepage: "https://integration.example.com",
     logo_url: "https://integration.example.com/logo.png",
@@ -66,11 +66,17 @@ describe("SEP-0001 generator — integration: environment variable handling", ()
     expect(toml).not.toContain("FEDERATION_SERVER");
   });
 
-  it("includes SIGNING_KEY when env var is set", () => {
-    process.env.SIGNING_KEY = "SCZANGBA5ARYOEX4DYUJC7GPZESCSXOZQIMONZPH5GKIQKP52PCMHHCA";
+  it("includes SIGNING_KEY when env var is set to a public key", () => {
+    process.env.SIGNING_KEY = "GBTL47RTFR5EKMZSXWOQU735WBK7LRPPDIDK3JTNTCZZ7NUBBRDTVSK2";
     const toml = generateStellarToml(BASE_MERCHANT);
-    expect(toml).toContain("SIGNING_KEY");
-    expect(toml).toContain("SCZANGBA5ARYOEX4DYUJC7GPZESCSXOZQIMONZPH5GKIQKP52PCMHHCA");
+    expect(toml).toContain('SIGNING_KEY = "GBTL47RTFR5EKMZSXWOQU735WBK7LRPPDIDK3JTNTCZZ7NUBBRDTVSK2"');
+  });
+
+  it("never publishes a secret seed configured as SIGNING_KEY (#1457)", () => {
+    process.env.SIGNING_KEY = "SAFQWCYLBMFQWCYLBMFQWCYLBMFQWCYLBMFQWCYLBMFQWCYLBMFQX44I";
+    const toml = generateStellarToml(BASE_MERCHANT);
+    expect(toml).not.toContain("SIGNING_KEY");
+    expect(toml).not.toContain("SAFQWCYLBMFQWCYLBMFQWCYLBMFQWCYLBMFQWCYLBMFQWCYLBMFQX44I");
   });
 
   it("omits SIGNING_KEY when env var is absent", () => {
@@ -110,7 +116,7 @@ describe("SEP-0001 generator — integration: merchant field combinations", () =
   it("generates ACCOUNTS list when recipient is provided", () => {
     const toml = generateStellarToml(BASE_MERCHANT);
     expect(toml).toContain(
-      `ACCOUNTS = ["GBUQWP3BOUZX34ULNQG23RQ6F4YUSXHTQSXUSMIQSTBE2BRUY4DQAT2B"]`
+      `ACCOUNTS = ["GDVEU3DD4KOFECV66VIHWEZOYX4ZKR3WV27L464SIIPOU2IUI3JCZA57"]`
     );
   });
 
@@ -118,7 +124,7 @@ describe("SEP-0001 generator — integration: merchant field combinations", () =
     const variants = [
       { business_name: "No Email" },
       { business_name: "With Email", email: "a@b.com" },
-      { business_name: "Full", email: "a@b.com", notification_email: "n@b.com", recipient: "GCEZWKCA5VLDNRLN3RPRJMRZOX3Z6G5CHCGDUPIU2HRHHZLQQFPSH3BB" },
+      { business_name: "Full", email: "a@b.com", notification_email: "n@b.com", recipient: "GD6ROJBYLKQMOW3E7N4M2YBPUHMZD7PL65VRHRMO24BOVSBV5H3BQRSL" },
       { ...BASE_MERCHANT },
     ];
     for (const merchant of variants) {
@@ -187,12 +193,13 @@ describe("SEP-0001 generator — stress: throughput and concurrency", () => {
     results.forEach((toml) => expect(validateStellarToml(toml)).toBe(true));
   });
 
-  it("handles very long string fields without crashing", () => {
+  it("handles very long string fields without crashing (truncated to 256 chars, #1457)", () => {
     const longName = "A".repeat(10_000);
     const merchant = { ...BASE_MERCHANT, business_name: longName };
     const toml = generateStellarToml(merchant);
     expect(validateStellarToml(toml)).toBe(true);
-    expect(toml).toContain(longName);
+    expect(toml).toContain(`name = "${"A".repeat(256)}"`);
+    expect(toml).not.toContain("A".repeat(257));
   });
 
   it("handles merchants with unicode characters in business_name", () => {

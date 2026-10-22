@@ -2,8 +2,9 @@
  * In-memory Redis stand-in shared by the exchange-rate coordinator and the
  * payment-session lock / idempotency tests.
  *
- * Supports GET, SET (EX/PX/NX), DEL and the compare-and-delete EVAL script,
- * both as methods and through sendCommand. Commands run in FIFO order.
+ * Supports GET, SET (EX/PX/NX), DEL and the compare-and-delete and
+ * compare-and-pexpire EVAL scripts, both as methods and through sendCommand.
+ * Commands run in FIFO order.
  * Expiry follows Date.now(), so it works with vi.useFakeTimers().
  * setFailure() makes later commands reject, which the coordinator uses to
  * exercise its fail-open path.
@@ -43,6 +44,12 @@ export function createFakeRedis({ latencyMs = 0 } = {}) {
     const text = String(script);
     return /redis\.call\(['"]get['"], KEYS\[1\]\)/.test(text)
       && /redis\.call\(['"]del['"], KEYS\[1\]\)/.test(text);
+  }
+
+  function isCompareAndPexpire(script) {
+    const text = String(script);
+    return /redis\.call\(['"]get['"], KEYS\[1\]\)/.test(text)
+      && /redis\.call\(['"]pexpire['"], KEYS\[1\], ARGV\[2\]\)/.test(text);
   }
 
   async function run(args, fn) {
@@ -102,7 +109,15 @@ export function createFakeRedis({ latencyMs = 0 } = {}) {
           case 'DEL':
             return rest.reduce((count, key) => count + (live(key) && store.delete(key) ? 1 : 0), 0);
           case 'EVAL': {
-            const [script, numKeys, key, token] = rest;
+            const [script, numKeys, key, token, ttlMs] = rest;
+            if (isCompareAndPexpire(script) && String(numKeys) === '1') {
+              const entry = live(key);
+              if (entry?.value === token) {
+                entry.expiresAt = Date.now() + Number(ttlMs);
+                return 1;
+              }
+              return 0;
+            }
             if (!isCompareAndDelete(script) || String(numKeys) !== '1') {
               throw new Error('fake-redis: unsupported EVAL script');
             }

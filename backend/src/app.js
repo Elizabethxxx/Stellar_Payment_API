@@ -49,8 +49,9 @@ import { versionDeprecationMiddleware } from "./lib/version-deprecation.js";
 import oracleRouter from "./routes/oracle.js";
 import { getPaymentSessionValidatorHealth } from "./lib/payment-session-validator.js";
 import { getExchangeRateOracleHealth } from "./lib/exchange-rate-oracle-telemetry.js";
-import { getWebSocketRelayHealth } from "./lib/websocket-relay-telemetry.js";
+import { getDatabaseRowLevelSecurityHealth } from "./lib/db-rls-telemetry.js";
 import { configureExchangeRateCoordination } from "./services/exchangeRateService.js";
+import { configureHorizonRetryCoordination } from "./lib/stellar/horizon-client/retry-coordinator.js";
 
 export async function createApp({ redisClient }) {
   const app = express();
@@ -59,6 +60,10 @@ export async function createApp({ redisClient }) {
   // Cross-instance exchange-rate quote coordination (issue #1445). Without
   // Redis the cache still coalesces concurrent misses within this process.
   configureExchangeRateCoordination({ redisClient: redisAvailable ? redisClient : null });
+
+  // Cluster-wide Horizon retry slots and rate-limit cooldown (issue #1440).
+  // Without Redis each process still limits its own retries.
+  configureHorizonRetryCoordination({ redisClient: redisAvailable ? redisClient : null });
 
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
@@ -263,7 +268,7 @@ export async function createApp({ redisClient }) {
         // Informational only — does not affect `ok` / the status code.
         payment_session_validator: getPaymentSessionValidatorHealth().status,
         exchange_rate_oracle_cache: getExchangeRateOracleHealth().status,
-        websocket_relay: getWebSocketRelayHealth().status,
+        database_row_level_security: getDatabaseRowLevelSecurityHealth().status,
       },
     });
   });
@@ -318,26 +323,26 @@ export async function createApp({ redisClient }) {
 
   /**
    * @swagger
-   * /health/websocket-relay:
+   * /health/database-row-level-security:
    *   get:
-   *     summary: WebSocket Relay Service health telemetry
+   *     summary: Database Row-Level Security Service health telemetry
    *     description: >
-   *       Rolling-window delivery counts, failure ratio, retry exhaustion,
-   *       circuit breaker state and dead letter queue depth for the WebSocket
-   *       relay (issue #1453). Returns 503 only when the relay is unhealthy
-   *       (circuit open, failure ratio above threshold or a large DLQ
-   *       backlog). A degraded status still returns 200. The body contains
-   *       no message payloads or payment ids.
+   *       Rolling-window counts, error / rollback ratios and derived status
+   *       for transactions executed through withMerchantContext (issue #1468).
+   *       Returns 503 only when the service is unhealthy (internal error ratio
+   *       above threshold); a degraded status (high rollback ratio or an
+   *       invalid-input spike) still returns 200. The body contains no
+   *       merchant ids, query text or error strings.
    *     tags: [Health]
    *     security: []
    *     responses:
    *       200:
-   *         description: Relay healthy or degraded
+   *         description: RLS service healthy or degraded
    *       503:
-   *         description: Relay unhealthy
+   *         description: RLS service unhealthy
    */
-  app.get("/health/websocket-relay", (_req, res) => {
-    const health = getWebSocketRelayHealth();
+  app.get("/health/database-row-level-security", (_req, res) => {
+    const health = getDatabaseRowLevelSecurityHealth();
     res.status(health.status === "unhealthy" ? 503 : 200).json(health);
   });
 
