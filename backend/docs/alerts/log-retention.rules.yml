@@ -1,0 +1,83 @@
+# Prometheus alerting rules for the Log Retention & Archival Service (issue #1473).
+#
+# Load with:   rule_files: ["docs/alerts/log-retention.rules.yml"]
+# Validate:    promtool check rules docs/alerts/log-retention.rules.yml
+#
+# Metric reference: docs/LOG_RETENTION.md
+#
+# The purge usually runs as a cron script that pushes to a Pushgateway
+# (LOG_RETENTION_PUSHGATEWAY_URL), or inside the API when
+# LOG_RETENTION_PURGE_CRON is set. Either way the series below are emitted.
+
+groups:
+  - name: log-retention
+    rules:
+      - alert: LogRetentionPurgeUnhealthy
+        expr: max(log_retention_health_state) >= 2
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: Webhook log purge reports unhealthy
+          description: >
+            The purge failed several times in a row or has not succeeded within
+            the staleness limit (LOG_RETENTION_HEALTH_MAX_STALENESS_MS). Old
+            webhook delivery logs are accumulating. See GET /health/log-retention
+            for the reasons and the last error in the logs.
+
+      - alert: LogRetentionPurgeFailing
+        expr: max(log_retention_purge_consecutive_failures) >= 1
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: Last webhook log purge run failed
+          description: >
+            At least one purge run failed and no run has succeeded since.
+            Check the "Log retention purge failed" log line for the error code.
+
+      - alert: LogRetentionPurgeStale
+        expr: |
+          max(log_retention_purge_last_success_timestamp_seconds) > 0
+          and
+          time() - max(log_retention_purge_last_success_timestamp_seconds) > 2 * 86400
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: No successful webhook log purge in 48 hours
+          description: >
+            The daily purge has not succeeded for two days. Check that the cron
+            (npm run purge:webhook-logs) or LOG_RETENTION_PURGE_CRON still runs.
+
+      - alert: LogRetentionPurgeDurationExceeded
+        expr: increase(log_retention_purge_duration_exceeded_total[1d]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Webhook log purge overran its time budget
+          description: >
+            A purge run took longer than LOG_PURGE_MAX_DURATION_MS. The backlog
+            may be large or the database slow; consider a larger
+            LOG_PURGE_BATCH_SIZE or running the purge more often.
+
+      - alert: LogRetentionRetriesExhausted
+        expr: increase(log_retention_purge_retries_total{result="exhausted"}[1h]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Webhook log purge gave up after retries
+          description: >
+            A purge query kept failing with transient database errors until the
+            retry budget (LOG_PURGE_RETRY_MAX_ATTEMPTS) ran out.
+
+      - alert: LogRetentionLockErrors
+        expr: increase(log_retention_purge_lock_total{result="error"}[1h]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: Webhook log purge could not take its advisory lock
+          description: >
+            Acquiring the Postgres advisory lock failed (not merely contended).
+            The purge did not run. Check database connectivity from the host
+            that runs the purge.

@@ -6,6 +6,9 @@
  * 
  * Refactored to use modular components for better maintainability:
  * - RetryManager: Handles retry logic and metrics
+ * - Backoff: Jittered exponential backoff + Retry-After handling (#1439)
+ * - ConcurrencyLimiter / HorizonRetryCoordinator: per-process and
+ *   cross-instance concurrency control for retries (#1440)
  * - ErrorHandler: Error classification and handling utilities
  * - Constants: Centralized configuration
  */
@@ -21,6 +24,7 @@ import {
 } from "../metrics.js";
 import { DEFAULT_RETRY_DELAYS_MS, DEFAULT_HEALTH_TIMEOUT_MS } from "./horizon-client/constants.js";
 import { createRetryManager } from "./horizon-client/retry-manager.js";
+import { HorizonRetryCoordinator } from "./horizon-client/retry-coordinator.js";
 import { classifyError, getErrorStatus, handleError } from "./horizon-client/error-handler.js";
 
 export class HorizonClient {
@@ -30,8 +34,21 @@ export class HorizonClient {
     this.retryDelays = options.retryDelays || DEFAULT_RETRY_DELAYS_MS;
     this.healthTimeout = options.healthTimeout || DEFAULT_HEALTH_TIMEOUT_MS;
     
-    this.server = new StellarSdk.Horizon.Server(this.horizonUrl);
-    this.retryManager = createRetryManager(this.retryDelays);
+    // `serverOptions` is forwarded to the SDK (e.g. { allowHttp: true } for a
+    // local standalone network or an integration-test Horizon stub).
+    this.server = options.serverOptions
+      ? new StellarSdk.Horizon.Server(this.horizonUrl, options.serverOptions)
+      : new StellarSdk.Horizon.Server(this.horizonUrl);
+    // An explicit `retryDelays` keeps the legacy fixed schedule; otherwise the
+    // manager uses jittered exponential backoff (issue #1439).
+    this.retryManager = createRetryManager(options.retryDelays, {
+      horizonUrl: this.horizonUrl,
+      backoff: options.backoff,
+      concurrency: options.concurrency,
+      coordination: options.coordination,
+      sleep: options.sleep,
+      random: options.random,
+    });
     
     // Track active connections
     horizonClientConnections.inc();
@@ -170,6 +187,24 @@ export class HorizonClient {
       healthTimeout: this.healthTimeout,
       retryManager: this.retryManager.getConfig(),
     };
+  }
+
+  /**
+   * Enable cross-instance retry coordination (issue #1440). Pass a connected
+   * Redis client; a missing or closed client keeps the in-process fallback.
+   *
+   * @param {object} opts
+   * @param {object|null} opts.redisClient
+   * @returns {"redis"|"local"} the active coordination backend
+   */
+  configureRetryCoordination({ redisClient = null, ...options } = {}) {
+    const coordinator = new HorizonRetryCoordinator({
+      ...options,
+      redisClient,
+      horizonUrl: this.horizonUrl,
+    });
+    this.retryManager.setCoordinator(coordinator);
+    return coordinator.backend;
   }
 
   /**

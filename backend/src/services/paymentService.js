@@ -34,13 +34,16 @@ import { insertPaymentSessionWithRetry } from "../lib/payment-session-retry.js";
 // Payment Processor Telemetry: sanitised, validated recorders (issue #1477)
 // and retried idempotent reads (#1479).
 import {
-  recordSessionTelemetry,
-  recordVerificationTelemetry,
-  recordStatusCacheTelemetry,
-  recordRefundTelemetry,
-  recordListRequestTelemetry,
-} from "../lib/payment-processor-telemetry.js";
-import { retryProcessorRead } from "../lib/payment-processor-retry.js";
+  paymentProcessorSessionsTotal,
+  paymentProcessorSessionDuration,
+  paymentProcessorVerificationsTotal,
+  paymentProcessorVerificationDuration,
+  paymentProcessorStatusCacheHits,
+  paymentProcessorStatusCacheMisses,
+  paymentProcessorRefundsTotal,
+  paymentProcessorListRequestsTotal,
+  toAssetLabel,
+} from "../lib/payment-processor-metrics.js";
 
 const SAFE_METADATA_KEY_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
@@ -458,7 +461,13 @@ export const paymentService = {
   async createPaymentSession(merchant, body) {
     const sessionStart = Date.now();
     const recordSessionOutcome = (outcome) => {
-      recordSessionTelemetry({ asset: body?.asset, outcome, durationSeconds: (Date.now() - sessionStart) / 1000 });
+      // body.asset is client input; bound it before using it as a label (#1481).
+      const asset = toAssetLabel(body?.asset);
+      paymentProcessorSessionsTotal.inc({ asset, outcome });
+      paymentProcessorSessionDuration.observe(
+        { asset, outcome },
+        (Date.now() - sessionStart) / 1000,
+      );
     };
     const supabase = await getSupabaseClient();
 
@@ -748,7 +757,11 @@ export const paymentService = {
     // Record metrics
     paymentConfirmedCounter.inc({ asset: data.asset });
     paymentConfirmationLatency.observe({ asset: data.asset }, latencySeconds);
-    recordVerificationTelemetry({ asset: data.asset, outcome: "confirmed", durationSeconds: (Date.now() - verifyStart) / 1000 });
+    paymentProcessorVerificationsTotal.inc({ asset: toAssetLabel(data.asset), outcome: "confirmed" });
+    paymentProcessorVerificationDuration.observe(
+      { asset: toAssetLabel(data.asset), outcome: "confirmed" },
+      (Date.now() - verifyStart) / 1000,
+    );
 
     if (io && data.merchant_id) {
       io.to(`merchant:${data.merchant_id}`).emit("payment:confirmed", {

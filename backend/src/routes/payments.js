@@ -60,6 +60,7 @@ import { retryProcessorRead } from "../lib/payment-processor-retry.js";
 import {
   getExchangeRateQuote,
   NoPathFoundError,
+  ExchangeRateValidationError,
 } from "../services/exchangeRateService.js";
 import {
   pathPaymentQuoteRequestsTotal,
@@ -1299,6 +1300,10 @@ function createPaymentsRouter({
             return res.status(404).json({
               error: "No path found for this asset pair",
             });
+          }
+          if (err instanceof ExchangeRateValidationError) {
+            pathPaymentQuoteRequestsTotal.inc({ ...assetLabels, outcome: "invalid_params" });
+            return res.status(400).json({ error: err.message, field: err.field });
           }
           throw err;
         }

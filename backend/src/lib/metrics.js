@@ -890,6 +890,30 @@ export const horizonClientOperationSuccessRate = new client.Gauge({
   labelNames: ["operation"],
 });
 
+// Retry Manager alert metrics and health telemetry (Issue #1438)
+export const horizonClientRetryExhausted = new client.Counter({
+  name: "horizon_client_retry_exhausted_total",
+  help: "Horizon client operations that failed after exhausting every retry",
+  labelNames: ["operation", "error_type"],
+});
+
+export const horizonClientConsecutiveFailures = new client.Gauge({
+  name: "horizon_client_consecutive_failures",
+  help: "Consecutive infrastructure failures per Horizon client operation (reset on success)",
+  labelNames: ["operation"],
+});
+
+export const horizonClientLastSuccessTimestamp = new client.Gauge({
+  name: "horizon_client_last_success_timestamp_seconds",
+  help: "Unix timestamp of the last successful Horizon client operation",
+  labelNames: ["operation"],
+});
+
+export const horizonClientHealthState = new client.Gauge({
+  name: "horizon_client_health_state",
+  help: "Horizon client retry manager health (0=healthy, 1=degraded, 2=unhealthy)",
+});
+
 export const paymentMatchingOperations = new client.Counter({
   name: "payment_matching_operations_total",
   help: "Total number of payment matching operations",
@@ -1111,6 +1135,10 @@ register.registerMetric(horizonClientSerializationErrors);
 register.registerMetric(horizonClientRateLimitWaitTime);
 register.registerMetric(horizonClientThroughput);
 register.registerMetric(horizonClientOperationSuccessRate);
+register.registerMetric(horizonClientRetryExhausted);
+register.registerMetric(horizonClientConsecutiveFailures);
+register.registerMetric(horizonClientLastSuccessTimestamp);
+register.registerMetric(horizonClientHealthState);
 register.registerMetric(paymentMatchingOperations);
 register.registerMetric(paymentMatchingErrors);
 register.registerMetric(signatureVerificationOperations);
@@ -1144,3 +1172,26 @@ export const auditLogQueueWaitDuration = new client.Histogram({
 
 register.registerMetric(auditLogQueueDepth);
 register.registerMetric(auditLogQueueWaitDuration);
+
+// ── Idempotency Key Manager Metrics (Issue #1465) ───────────────────────────
+export const idempotencyRequestsTotal = new client.Counter({
+  name: "idempotency_requests_total",
+  help: "Total number of requests processed by the idempotency middleware",
+  labelNames: ["result"], // acquired, replay, payload_mismatch, in_flight_conflict, bypassed, redis_error
+});
+
+export const idempotencyLockDuration = new client.Histogram({
+  name: "idempotency_lock_duration_seconds",
+  help: "Time a request held the idempotency lock before completing or releasing it",
+  labelNames: ["outcome"], // completed, released, orphaned
+  buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60],
+});
+
+export const idempotencyOrphanedCompletionsTotal = new client.Counter({
+  name: "idempotency_orphaned_completions_total",
+  help: "Total number of responses not cached because the idempotency lock was lost mid-flight",
+});
+
+register.registerMetric(idempotencyRequestsTotal);
+register.registerMetric(idempotencyLockDuration);
+register.registerMetric(idempotencyOrphanedCompletionsTotal);

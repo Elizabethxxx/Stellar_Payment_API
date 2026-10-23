@@ -1,0 +1,494 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`ApiUsageChart Component > Snapshot Tests > matches snapshot during loading state 1`] = `
+<div>
+  <div
+    class="rounded-xl border border-white/10 bg-white/5 p-6"
+  >
+    <div
+      class="flex items-center justify-center py-12"
+    >
+      <div
+        class="h-8 w-8 animate-spin rounded-full border-2 border-mint border-t-transparent"
+      />
+    </div>
+  </div>
+</div>
+`;
+
+exports[`ApiUsageChart Component > Snapshot Tests > matches snapshot on desktop populated state 1`] = `
+<div>
+  <div
+    aria-label="API Usage Statistics"
+    class="min-w-0 rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 outline-none focus-visible:ring-2 focus-visible:ring-mint focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0A0A]"
+    role="region"
+    tabindex="0"
+  >
+    <div
+      class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div>
+        <h3
+          class="text-lg font-semibold text-white"
+          id="api-usage-heading"
+        >
+          API Usage - Last 7 Days
+        </h3>
+        <p
+          aria-live="polite"
+          class="text-sm text-slate-400"
+        >
+          Total requests: 
+          2,000
+        </p>
+      </div>
+      <div
+        class="flex items-center gap-2"
+      >
+        <button
+          aria-label="Refresh API usage statistics"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint disabled:opacity-50"
+          type="button"
+        >
+          <svg
+            aria-hidden="true"
+            class="h-3.5 w-3.5 "
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+          <span>
+            Refresh
+          </span>
+        </button>
+        <button
+          aria-controls="api-usage-drawer"
+          aria-expanded="false"
+          aria-label="Open detailed usage breakdown drawer"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint sm:hidden"
+          type="button"
+        >
+          <span>
+            View Details
+          </span>
+        </button>
+      </div>
+    </div>
+    <div
+      class="sr-only"
+    >
+      <table
+        aria-label="Daily API request volume breakdown"
+      >
+        <caption>
+          Daily API request volume for the last 7 days
+        </caption>
+        <thead>
+          <tr>
+            <th
+              scope="col"
+            >
+              Date
+            </th>
+            <th
+              scope="col"
+            >
+              Requests
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              Oct 15, 2026
+            </td>
+            <td>
+              120 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 16, 2026
+            </td>
+            <td>
+              250 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 17, 2026
+            </td>
+            <td>
+              310 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 18, 2026
+            </td>
+            <td>
+              95 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 19, 2026
+            </td>
+            <td>
+              430 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 20, 2026
+            </td>
+            <td>
+              620 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 21, 2026
+            </td>
+            <td>
+              175 requests
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div
+      class="-mx-2 sm:mx-0"
+    >
+      <div
+        data-height="300"
+        data-testid="responsive-container"
+        data-width="100%"
+      >
+        <div
+          data-margin="{"top":8,"right":16,"left":-8,"bottom":8}"
+          data-points="7"
+          data-testid="bar-chart"
+        >
+          <div
+            data-testid="cartesian-grid"
+          />
+          <div
+            data-fontsize="12px"
+            data-key="date"
+            data-mintickgap="16"
+            data-testid="x-axis"
+          />
+          <div
+            data-fontsize="12px"
+            data-testid="y-axis"
+            data-width="44"
+          />
+          <div
+            data-testid="tooltip"
+          />
+          <div
+            data-fill="#5ef2c0"
+            data-key="requests"
+            data-maxbarsize="32"
+            data-testid="bar"
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`ApiUsageChart Component > Snapshot Tests > matches snapshot on empty data state 1`] = `
+<div>
+  <div
+    aria-label="API Usage Statistics"
+    class="min-w-0 rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 outline-none focus-visible:ring-2 focus-visible:ring-mint focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0A0A]"
+    role="region"
+    tabindex="0"
+  >
+    <div
+      class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div>
+        <h3
+          class="text-lg font-semibold text-white"
+          id="api-usage-heading"
+        >
+          API Usage - Last 7 Days
+        </h3>
+        <p
+          aria-live="polite"
+          class="text-sm text-slate-400"
+        >
+          Total requests: 
+          0
+        </p>
+      </div>
+      <div
+        class="flex items-center gap-2"
+      >
+        <button
+          aria-label="Refresh API usage statistics"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint disabled:opacity-50"
+          type="button"
+        >
+          <svg
+            aria-hidden="true"
+            class="h-3.5 w-3.5 "
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+          <span>
+            Refresh
+          </span>
+        </button>
+      </div>
+    </div>
+    <div
+      class="flex items-center justify-center py-12"
+    >
+      <p
+        class="text-sm text-slate-400"
+      >
+        No API usage data available
+      </p>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`ApiUsageChart Component > Snapshot Tests > matches snapshot on error state 1`] = `
+<div>
+  <div
+    class="rounded-xl border border-red-500/30 bg-red-500/10 p-6"
+  >
+    <p
+      class="text-sm text-red-300"
+    >
+      Failed to fetch usage data: 500
+    </p>
+  </div>
+</div>
+`;
+
+exports[`ApiUsageChart Component > Snapshot Tests > matches snapshot on mobile compact populated state 1`] = `
+<div>
+  <div
+    aria-label="API Usage Statistics"
+    class="min-w-0 rounded-xl border border-white/10 bg-white/5 p-4 sm:p-6 outline-none focus-visible:ring-2 focus-visible:ring-mint focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A0A0A]"
+    role="region"
+    tabindex="0"
+  >
+    <div
+      class="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div>
+        <h3
+          class="text-lg font-semibold text-white"
+          id="api-usage-heading"
+        >
+          API Usage - Last 7 Days
+        </h3>
+        <p
+          aria-live="polite"
+          class="text-sm text-slate-400"
+        >
+          Total requests: 
+          2,000
+        </p>
+      </div>
+      <div
+        class="flex items-center gap-2"
+      >
+        <button
+          aria-label="Refresh API usage statistics"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint disabled:opacity-50"
+          type="button"
+        >
+          <svg
+            aria-hidden="true"
+            class="h-3.5 w-3.5 "
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+            />
+          </svg>
+          <span>
+            Refresh
+          </span>
+        </button>
+        <button
+          aria-controls="api-usage-drawer"
+          aria-expanded="false"
+          aria-label="Open detailed usage breakdown drawer"
+          class="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-slate-300 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-mint sm:hidden"
+          type="button"
+        >
+          <span>
+            View Details
+          </span>
+        </button>
+      </div>
+    </div>
+    <div
+      class="sr-only"
+    >
+      <table
+        aria-label="Daily API request volume breakdown"
+      >
+        <caption>
+          Daily API request volume for the last 7 days
+        </caption>
+        <thead>
+          <tr>
+            <th
+              scope="col"
+            >
+              Date
+            </th>
+            <th
+              scope="col"
+            >
+              Requests
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              Oct 15, 2026
+            </td>
+            <td>
+              120 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 16, 2026
+            </td>
+            <td>
+              250 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 17, 2026
+            </td>
+            <td>
+              310 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 18, 2026
+            </td>
+            <td>
+              95 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 19, 2026
+            </td>
+            <td>
+              430 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 20, 2026
+            </td>
+            <td>
+              620 requests
+            </td>
+          </tr>
+          <tr>
+            <td>
+              Oct 21, 2026
+            </td>
+            <td>
+              175 requests
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div
+      class="-mx-2 sm:mx-0"
+    >
+      <div
+        data-height="240"
+        data-testid="responsive-container"
+        data-width="100%"
+      >
+        <div
+          data-margin="{"top":8,"right":8,"left":-20,"bottom":0}"
+          data-points="7"
+          data-testid="bar-chart"
+        >
+          <div
+            data-testid="cartesian-grid"
+          />
+          <div
+            data-fontsize="10px"
+            data-key="date"
+            data-mintickgap="28"
+            data-testid="x-axis"
+          />
+          <div
+            data-fontsize="10px"
+            data-testid="y-axis"
+            data-width="32"
+          />
+          <div
+            data-testid="tooltip"
+          />
+          <div
+            data-fill="#5ef2c0"
+            data-key="requests"
+            data-maxbarsize="22"
+            data-testid="bar"
+          />
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+`;
+
+exports[`ApiUsageChart Component > Snapshot Tests > matches snapshot when unauthenticated 1`] = `
+<div>
+  <div
+    class="rounded-xl border border-white/10 bg-white/5 p-6"
+  >
+    <p
+      class="text-sm text-slate-400"
+    >
+      Register or log in to view API usage statistics.
+    </p>
+  </div>
+</div>
+`;

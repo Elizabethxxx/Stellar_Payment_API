@@ -92,6 +92,25 @@ export const paymentProcessorListRequestsTotal = new client.Counter({
   labelNames: ["outcome"],
 });
 
+/**
+ * Bound the `asset` label (issue #1481).
+ *
+ * Session creation records the asset straight from the request body, and a
+ * validation_failed request can carry any string. Unbounded label values
+ * grow one time series per distinct value, which a hostile client can use to
+ * exhaust Prometheus memory. Only well-formed Stellar asset codes are kept;
+ * everything else is bucketed as "invalid" (or "unknown" when absent).
+ *
+ * @param {unknown} asset
+ * @returns {string}
+ */
+export function toAssetLabel(asset) {
+  if (asset === undefined || asset === null || asset === "") return "unknown";
+  if (typeof asset !== "string") return "invalid";
+  const code = asset.trim().toUpperCase();
+  return /^[A-Z0-9]{1,12}$/.test(code) ? code : "invalid";
+}
+
 register.registerMetric(paymentProcessorSessionsTotal);
 register.registerMetric(paymentProcessorSessionDuration);
 register.registerMetric(paymentProcessorVerificationsTotal);

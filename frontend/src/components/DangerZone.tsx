@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { useMerchantLogout } from "@/lib/merchant-store";
@@ -12,6 +12,11 @@ interface DangerZoneProps {
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 
+// Visible keyboard focus on every control in the deletion flow (#1571).
+const FOCUS_RING =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2";
+const FOCUS_RING_DARK = `${FOCUS_RING} focus-visible:ring-offset-slate-900`;
+
 export default function DangerZone({ apiKey }: DangerZoneProps) {
   const router = useRouter();
   const logout = useMerchantLogout();
@@ -21,7 +26,25 @@ export default function DangerZone({ apiKey }: DangerZoneProps) {
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const confirmInputId = useId();
+  const confirmHintId = useId();
+  // Where focus starts in each dialog: the safe action first, then the input.
+  const firstCancelRef = useRef<HTMLButtonElement>(null);
+  const confirmInputRef = useRef<HTMLInputElement>(null);
+
+  const closeFirstModal = () => setIsFirstModalOpen(false);
+
+  // Escape, the backdrop and the close button all call this. Ignore them while
+  // the deletion request is in flight, so the dialog cannot vanish under a
+  // request that is still running.
+  const closeSecondModal = () => {
+    if (isDeleting) return;
+    setIsSecondModalOpen(false);
+    setDeleteConfirmation("");
+  };
+
   const handleDeleteAccount = async () => {
+    if (isDeleting) return;
     if (deleteConfirmation !== "DELETE") {
       toast.error("Please type DELETE to confirm");
       return;
@@ -73,7 +96,7 @@ export default function DangerZone({ apiKey }: DangerZoneProps) {
           <button
             type="button"
             onClick={() => setIsFirstModalOpen(true)}
-            className="flex h-12 w-fit items-center justify-center rounded-md border border-red-200 bg-red-50 px-8 text-[10px] font-bold text-red-600 uppercase tracking-widest transition-all hover:bg-red-100"
+            className={`flex h-12 w-fit items-center justify-center rounded-md border border-red-200 bg-red-50 px-8 text-[10px] font-bold text-red-600 uppercase tracking-widest transition-all hover:bg-red-100 ${FOCUS_RING}`}
           >
             Initiate Deletion...
           </button>
@@ -82,8 +105,9 @@ export default function DangerZone({ apiKey }: DangerZoneProps) {
 
       <Modal
         isOpen={isFirstModalOpen}
-        onClose={() => setIsFirstModalOpen(false)}
+        onClose={closeFirstModal}
         title="Delete Account"
+        initialFocusRef={firstCancelRef}
       >
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-3">
@@ -99,17 +123,20 @@ export default function DangerZone({ apiKey }: DangerZoneProps) {
 
           <div className="flex gap-3">
             <button
+              type="button"
               onClick={() => {
                 setIsFirstModalOpen(false);
                 setIsSecondModalOpen(true);
               }}
-              className="flex-1 h-10 rounded-md bg-red-600 font-bold text-white text-xs uppercase tracking-widest transition-all hover:bg-red-700"
+              className={`flex-1 h-10 rounded-md bg-red-600 font-bold text-white text-xs uppercase tracking-widest transition-all hover:bg-red-700 ${FOCUS_RING_DARK}`}
             >
               Continue
             </button>
             <button
-              onClick={() => setIsFirstModalOpen(false)}
-              className="flex-1 h-10 rounded-md border border-[#E8E8E8] bg-white text-xs font-bold text-[#6B6B6B] uppercase tracking-widest transition-all hover:bg-[#F5F5F5]"
+              ref={firstCancelRef}
+              type="button"
+              onClick={closeFirstModal}
+              className={`flex-1 h-10 rounded-md border border-[#E8E8E8] bg-white text-xs font-bold text-[#6B6B6B] uppercase tracking-widest transition-all hover:bg-[#F5F5F5] ${FOCUS_RING_DARK}`}
             >
               Cancel
             </button>
@@ -119,46 +146,65 @@ export default function DangerZone({ apiKey }: DangerZoneProps) {
 
       <Modal
         isOpen={isSecondModalOpen}
-        onClose={() => {
-          setIsSecondModalOpen(false);
-          setDeleteConfirmation("");
-        }}
+        onClose={closeSecondModal}
         title="Final Confirmation"
+        initialFocusRef={confirmInputRef}
       >
-        <div className="flex flex-col gap-6">
+        <form
+          noValidate
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleDeleteAccount();
+          }}
+          className="flex flex-col gap-6"
+        >
           <div className="flex flex-col gap-3">
-            <p className="text-xs text-[#0A0A0A] font-bold uppercase tracking-widest">
+            <label
+              htmlFor={confirmInputId}
+              className="text-xs text-[#0A0A0A] font-bold uppercase tracking-widest"
+            >
               Type <span className="underline">DELETE</span>
-            </p>
+            </label>
             <input
+              ref={confirmInputRef}
+              id={confirmInputId}
               type="text"
               value={deleteConfirmation}
               onChange={(e) => setDeleteConfirmation(e.target.value)}
               placeholder="DELETE"
-              className="w-full rounded-md border border-[#E8E8E8] bg-[#F9F9F9] p-3 font-mono text-sm text-[#0A0A0A] outline-none focus:border-red-500"
+              readOnly={isDeleting}
+              aria-busy={isDeleting}
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              aria-describedby={confirmHintId}
+              className="w-full rounded-md border border-[#E8E8E8] bg-[#F9F9F9] p-3 font-mono text-sm text-[#0A0A0A] outline-none focus:border-red-500 focus-visible:ring-2 focus-visible:ring-red-500 read-only:opacity-60"
             />
+            <p id={confirmHintId} className="text-[10px] text-[#6B6B6B] uppercase tracking-widest">
+              Press <kbd className="rounded border border-[#E8E8E8] px-1 font-mono">Enter</kbd> to
+              delete once it matches, <kbd className="rounded border border-[#E8E8E8] px-1 font-mono">Esc</kbd> to
+              cancel.
+            </p>
           </div>
 
           <div className="flex gap-4 mt-4">
             <button
-              onClick={handleDeleteAccount}
+              type="submit"
               disabled={deleteConfirmation !== "DELETE" || isDeleting}
-              className="flex-1 h-12 rounded-md bg-red-600 font-bold text-white text-[10px] uppercase tracking-widest transition-all hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`flex-1 h-12 rounded-md bg-red-600 font-bold text-white text-[10px] uppercase tracking-widest transition-all hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed ${FOCUS_RING_DARK}`}
             >
               {isDeleting ? "Deleting..." : "Permanently Delete Account"}
             </button>
             <button
-              onClick={() => {
-                setIsSecondModalOpen(false);
-                setDeleteConfirmation("");
-              }}
+              type="button"
+              onClick={closeSecondModal}
               disabled={isDeleting}
-              className="flex-1 h-12 rounded-md border border-[#E8E8E8] bg-white text-[10px] font-bold text-[#6B6B6B] uppercase tracking-widest transition-all hover:text-[#0A0A0A]"
+              className={`flex-1 h-12 rounded-md border border-[#E8E8E8] bg-white text-[10px] font-bold text-[#6B6B6B] uppercase tracking-widest transition-all hover:text-[#0A0A0A] disabled:opacity-50 ${FOCUS_RING_DARK}`}
             >
               Cancel
             </button>
           </div>
-        </div>
+        </form>
       </Modal>
     </div>
   );

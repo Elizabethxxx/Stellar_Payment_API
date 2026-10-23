@@ -179,11 +179,14 @@ function sanitizeRelayMessage(msg) {
 function auditRelayEvent(event, metadata = {}, opts = {}) {
   const emit = opts.emit || console.log;
 
+  // Metadata is spread FIRST so caller-supplied context (which may contain
+  // client-controlled values) can never overwrite the audit marker, the
+  // timestamp or the event name (issue #1456 integration finding).
   const entry = {
+    ...(metadata && typeof metadata === "object" ? metadata : {}),
     audit: true,
     ts: new Date().toISOString(),
     event,
-    ...metadata,
   };
 
   emit(JSON.stringify(entry));

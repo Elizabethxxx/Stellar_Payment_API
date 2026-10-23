@@ -1,0 +1,82 @@
+# Prometheus alerting rules for the Horizon Client Retry Manager (issue #1438).
+#
+# Load with:   rule_files: ["docs/alerts/horizon-client-retry-manager.rules.yml"]
+# Validate:    promtool check rules docs/alerts/horizon-client-retry-manager.rules.yml
+#
+# Metric reference: docs/HORIZON_CLIENT_RETRY_MANAGER.md
+
+groups:
+  - name: horizon-client-retry-manager
+    rules:
+      - alert: HorizonClientUnhealthy
+        expr: max(horizon_client_health_state) >= 2
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: Horizon client reports unhealthy
+          description: >
+            At least one Horizon operation has failed after exhausting its
+            retries on consecutive calls. Payments cannot be verified against
+            the Stellar network. Check horizon_client_consecutive_failures by
+            operation and HorizonClient.getHealth().
+
+      - alert: HorizonClientDegraded
+        expr: max(horizon_client_health_state) == 1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Horizon client has been degraded for 10 minutes
+          description: >
+            Some Horizon operations keep failing after retries but are below
+            the unhealthy threshold.
+
+      - alert: HorizonClientRetriesExhausted
+        expr: sum by (operation, error_type) (increase(horizon_client_retry_exhausted_total[5m])) > 5
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Horizon {{ $labels.operation }} is exhausting retries ({{ $labels.error_type }})"
+          description: >
+            {{ $value | humanize }} {{ $labels.operation }} calls failed after
+            every retry in the last 5m with {{ $labels.error_type }}.
+
+      - alert: HorizonClientHighErrorRatio
+        expr: |
+          sum(rate(horizon_client_operations_total{result="error"}[10m]))
+            /
+          clamp_min(sum(rate(horizon_client_operations_total[10m])), 1e-9)
+            > 0.25
+          and sum(increase(horizon_client_operations_total[10m])) >= 20
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: More than 25% of Horizon client operations are failing
+          description: >
+            Error ratio over the last 10m is {{ $value | humanizePercentage }}.
+
+      - alert: HorizonClientNoRecentSuccess
+        expr: (time() - max by (operation) (horizon_client_last_success_timestamp_seconds)) > 900
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No successful Horizon {{ $labels.operation }} for 15 minutes"
+          description: >
+            The operation has succeeded before but has not succeeded for over
+            15 minutes. It may be failing or no longer being called.
+
+      - alert: HorizonClientValidationRejections
+        expr: sum(increase(horizon_client_data_validation_errors_total[10m])) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: Horizon client rejected invalid retry requests
+          description: >
+            Callers passed an invalid operation name or callback to the retry
+            manager. This is a code defect; check logs for
+            "Horizon client: rejected invalid retry request".

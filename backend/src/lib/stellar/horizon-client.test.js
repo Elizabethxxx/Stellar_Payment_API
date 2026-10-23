@@ -47,6 +47,12 @@ vi.mock('../metrics.js', () => ({
   horizonClientOperationDuration: { observe: vi.fn() },
   horizonClientRetryAttemptDuration: { observe: vi.fn() },
   horizonClientErrorRecovery: { inc: vi.fn() },
+  // Added for issues #1437 / #1438 (validation errors and health telemetry)
+  horizonClientDataValidationErrors: { inc: vi.fn() },
+  horizonClientRetryExhausted: { inc: vi.fn() },
+  horizonClientConsecutiveFailures: { set: vi.fn() },
+  horizonClientLastSuccessTimestamp: { set: vi.fn() },
+  horizonClientHealthState: { set: vi.fn() },
 }));
 
 describe('HorizonClient Unit Tests', () => {
@@ -341,6 +347,55 @@ describe('HorizonClient Unit Tests', () => {
       expect(metricsSpies.operations).toHaveBeenCalledWith({
         operation: 'getFeeStats',
         result: 'success',
+      });
+    });
+  });
+  describe('getHealth (issue #1438)', () => {
+    it('is healthy before any operation or probe', () => {
+      expect(horizonClient.getHealth()).toMatchObject({
+        status: 'healthy',
+        operations: {},
+        lastHealthCheck: null,
+      });
+    });
+
+    it('records a successful reachability probe', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+      await horizonClient.isReachable();
+
+      expect(horizonClient.getHealth()).toMatchObject({
+        status: 'healthy',
+        lastHealthCheck: { reachable: true, errorType: null },
+      });
+    });
+
+    it('reports degraded when the last probe failed', async () => {
+      global.fetch = vi.fn().mockRejectedValue(new Error('ECONNREFUSED'));
+      await horizonClient.isReachable();
+
+      const health = horizonClient.getHealth();
+      expect(health.status).toBe('degraded');
+      expect(health.lastHealthCheck).toMatchObject({ reachable: false });
+      expect(typeof health.lastHealthCheck.checkedAt).toBe('string');
+    });
+
+    it('reports a non-2xx probe with its HTTP status', async () => {
+      global.fetch = vi.fn().mockResolvedValue({ ok: false, status: 503 });
+      await horizonClient.isReachable();
+
+      expect(horizonClient.getHealth().lastHealthCheck).toMatchObject({
+        reachable: false,
+        errorType: 'http_503',
+      });
+    });
+
+    it('surfaces per-operation retry-manager health', async () => {
+      mockServer.feeStats.mockResolvedValue({ last_ledger_base_fee: '100' });
+      await horizonClient.getFeeStats();
+
+      expect(horizonClient.getHealth().operations.getFeeStats).toMatchObject({
+        status: 'healthy',
+        totalSuccesses: 1,
       });
     });
   });

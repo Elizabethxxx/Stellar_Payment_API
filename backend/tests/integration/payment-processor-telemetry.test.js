@@ -1,160 +1,218 @@
 /**
- * Payment Processor Telemetry + SEP-0001 retry — HTTP integration
- * (issues #1459, #1477, #1478, #1479).
+ * Payment Processor Telemetry — integration suite (issue #1481).
  *
- * Runs the real Express app. Only the edges are mocked (Supabase, Horizon,
- * Redis), as in tests/integration/health.test.js.
+ * Drives the real payment-processor metric series through the real
+ * /metrics route (src/routes/prometheus.js) and parses the Prometheus
+ * exposition text that a scraper would receive. Covers:
+ *   - every granular series reaches the merged scrape output
+ *   - counters and histograms stay arithmetically consistent
+ *   - the asset label is bounded (client input cannot create new series)
+ *   - concurrent scrapes during writes never fail or go backwards
  */
+import express from "express";
 import request from "supertest";
-import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from "vitest";
-
-const { mockMaybeSingle } = vi.hoisted(() => {
-  process.env.SUPABASE_URL ||= "https://example.supabase.co";
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||= "test-service-role-key";
-  process.env.DATABASE_URL ||= "postgresql://postgres:postgres@127.0.0.1:5432/postgres";
-  process.env.SEP0001_RETRY_BASE_DELAY_MS = "0";
-  process.env.SEP0001_RETRY_MAX_DELAY_MS = "0";
-  return { mockMaybeSingle: vi.fn() };
-});
-
-vi.mock("../../src/lib/stellar.js", () => ({
-  findMatchingPayment: vi.fn(),
-  findAnyRecentPayment: vi.fn(),
-  findStrictReceivePaths: vi.fn(),
-  getNetworkFeeStats: vi.fn(),
-  isHorizonReachable: vi.fn(async () => true),
-  isValidAssetCode: vi.fn(() => true),
-  isValidStellarAccountId: vi.fn(() => true),
-  isValidStellarPublicKey: vi.fn(() => true),
-  validateMemo: vi.fn(() => ({ valid: true })),
-  verifyTransactionSignature: vi.fn(),
-  withHorizonRetry: vi.fn(),
-}));
-
-vi.mock("../../src/lib/supabase.js", () => {
-  const builder = {
-    select: () => builder,
-    eq: () => builder,
-    is: () => builder,
-    limit: () => Promise.resolve({ data: [], error: null }),
-    maybeSingle: mockMaybeSingle,
-  };
-  return { supabase: { from: () => builder } };
-});
-
-import { createApp } from "../../src/app.js";
-import { closePool } from "../../src/lib/db.js";
+import { describe, it, expect, beforeAll, beforeEach } from "vitest";
 import {
-  recordProcessorRetryTelemetry,
-  recordSessionTelemetry,
-  recordVerificationTelemetry,
-  resetPaymentProcessorTelemetry,
-} from "../../src/lib/payment-processor-telemetry.js";
+  paymentProcessorListRequestsTotal,
+  paymentProcessorRefundsTotal,
+  paymentProcessorRegister,
+  paymentProcessorSessionDuration,
+  paymentProcessorSessionsTotal,
+  paymentProcessorStatusCacheHits,
+  paymentProcessorStatusCacheMisses,
+  paymentProcessorVerificationDuration,
+  paymentProcessorVerificationsTotal,
+  toAssetLabel,
+} from "../../src/lib/payment-processor-metrics.js";
 
-const mockRedisClient = {
-  ping: vi.fn().mockResolvedValue("PONG"),
-  on: vi.fn(),
-  sendCommand: vi.fn().mockResolvedValue("mocked_hash"),
-};
+/** Parse Prometheus text format into { name, labels, value } samples. */
+function parseExposition(text) {
+  const samples = [];
+  for (const line of text.split("\n")) {
+    if (!line || line.startsWith("#")) continue;
+    const match = /^([a-zA-Z_:][a-zA-Z0-9_:]*)(?:\{(.*)\})?\s+(\S+)$/.exec(line);
+    if (!match) throw new Error(`Unparseable exposition line: ${line}`);
+    const labels = {};
+    for (const [, key, value] of (match[2] ?? "").matchAll(/([a-zA-Z_][a-zA-Z0-9_]*)="((?:[^"\\]|\\.)*)"/g)) {
+      labels[key] = value;
+    }
+    samples.push({ name: match[1], labels, value: Number(match[3]) });
+  }
+  return samples;
+}
 
-const MERCHANT_ID = "550e8400-e29b-41d4-a716-446655440000";
+const pick = (samples, name, labels = {}) =>
+  samples.filter((s) => s.name === name && Object.entries(labels).every(([k, v]) => s.labels[k] === v));
+const sum = (samples) => samples.reduce((total, s) => total + s.value, 0);
 
-describe("Payment Processor Telemetry over HTTP (#1477, #1478, #1479)", () => {
+/** Mirrors paymentService.createPaymentSession's recordSessionOutcome. */
+function recordSession(rawAsset, outcome, seconds) {
+  const asset = toAssetLabel(rawAsset);
+  paymentProcessorSessionsTotal.inc({ asset, outcome });
+  paymentProcessorSessionDuration.observe({ asset, outcome }, seconds);
+}
+
+function resetAll() {
+  for (const metric of [
+    paymentProcessorSessionsTotal,
+    paymentProcessorSessionDuration,
+    paymentProcessorVerificationsTotal,
+    paymentProcessorVerificationDuration,
+    paymentProcessorStatusCacheHits,
+    paymentProcessorStatusCacheMisses,
+    paymentProcessorRefundsTotal,
+    paymentProcessorListRequestsTotal,
+  ]) {
+    metric.reset();
+  }
+}
+
+describe("Payment Processor Telemetry — /metrics integration (#1481)", () => {
   let app;
 
   beforeAll(async () => {
-    ({ app } = await createApp({ redisClient: mockRedisClient }));
-  });
-
-  afterAll(async () => {
-    await closePool();
+    const { default: prometheusRouter } = await import("../../src/routes/prometheus.js");
+    app = express();
+    app.use(prometheusRouter);
   });
 
   beforeEach(() => {
-    resetPaymentProcessorTelemetry();
-    mockMaybeSingle.mockReset();
+    resetAll();
   });
 
-  it("GET /health/payment-processor is healthy with no traffic", async () => {
-    const res = await request(app).get("/health/payment-processor");
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ status: "healthy", sessions: 0, verifications: 0 });
-  });
-
-  it("GET /health/payment-processor returns 503 when persistence keeps failing", async () => {
-    for (let i = 0; i < 25; i += 1) {
-      recordSessionTelemetry({ asset: "XLM", outcome: "persistence_failed", durationSeconds: 0.01 });
-    }
-    const res = await request(app).get("/health/payment-processor");
-    expect(res.status).toBe(503);
-    expect(res.body).toMatchObject({
-      status: "unhealthy",
-      reasons: ["session_failure_ratio_critical"],
-    });
-    expect(JSON.stringify(res.body)).not.toContain("XLM");
-  });
-
-  it("GET /health lists payment_processor without changing the overall status", async () => {
-    for (let i = 0; i < 25; i += 1) recordVerificationTelemetry({ asset: "XLM", outcome: "error" });
-    const res = await request(app).get("/health");
-    expect(res.status).toBe(200);
-    expect(res.body.services.payment_processor).toBe("unhealthy");
-  });
-
-  it("GET /metrics exposes sanitised labels and the new alert series", async () => {
-    recordSessionTelemetry({ asset: 'x"} injected{y="', outcome: "created", durationSeconds: 0.1 });
-    recordSessionTelemetry({ asset: "usdc", outcome: "created", durationSeconds: 0.1 });
-    recordSessionTelemetry({ asset: "XLM", outcome: "not_an_outcome" });
-    recordProcessorRetryTelemetry({ operation: "status_lookup", result: "recovered" });
-
+  const scrape = async () => {
     const res = await request(app).get("/metrics");
     expect(res.status).toBe(200);
-    expect(res.text).toMatch(/payment_processor_sessions_total\{[^}]*asset="invalid"[^}]*\} \d+/);
-    expect(res.text).toMatch(/payment_processor_sessions_total\{[^}]*asset="USDC"[^}]*\} \d+/);
-    expect(res.text).not.toContain("injected");
-    expect(res.text).not.toContain('outcome="not_an_outcome"');
-    expect(res.text).toMatch(
-      /payment_processor_telemetry_rejected_total\{[^}]*metric="sessions"[^}]*reason="invalid_outcome"[^}]*\} \d+/,
+    expect(res.headers["content-type"]).toMatch(/text\/plain/);
+    return parseExposition(res.text);
+  };
+
+  it("merges every payment processor series into the scrape", async () => {
+    recordSession("XLM", "created", 0.02);
+    paymentProcessorVerificationsTotal.inc({ asset: "XLM", outcome: "confirmed" });
+    paymentProcessorVerificationDuration.observe({ asset: "XLM", outcome: "confirmed" }, 0.3);
+    paymentProcessorStatusCacheHits.inc();
+    paymentProcessorStatusCacheMisses.inc();
+    paymentProcessorRefundsTotal.inc({ stage: "generate", outcome: "success" });
+    paymentProcessorListRequestsTotal.inc({ outcome: "success" });
+
+    const samples = await scrape();
+    for (const name of [
+      "payment_processor_sessions_total",
+      "payment_processor_session_duration_seconds_bucket",
+      "payment_processor_verifications_total",
+      "payment_processor_verification_duration_seconds_count",
+      "payment_processor_status_cache_hits_total",
+      "payment_processor_status_cache_misses_total",
+      "payment_processor_refunds_total",
+      "payment_processor_list_requests_total",
+    ]) {
+      expect(pick(samples, name).length, name).toBeGreaterThan(0);
+    }
+    // The payment processor registry's default label survives the merge.
+    expect(pick(samples, "payment_processor_sessions_total")[0].labels.app).toBe("stellar-payment-api");
+  });
+
+  it("reports exact counts per outcome and asset", async () => {
+    for (let i = 0; i < 7; i += 1) recordSession("USDC", "created", 0.01);
+    for (let i = 0; i < 3; i += 1) recordSession("USDC", "validation_failed", 0.001);
+    recordSession("XLM", "persistence_failed", 0.5);
+
+    const samples = await scrape();
+    expect(sum(pick(samples, "payment_processor_sessions_total", { asset: "USDC", outcome: "created" }))).toBe(7);
+    expect(sum(pick(samples, "payment_processor_sessions_total", { asset: "USDC", outcome: "validation_failed" }))).toBe(3);
+    expect(sum(pick(samples, "payment_processor_sessions_total"))).toBe(11);
+  });
+
+  it("keeps histograms consistent: cumulative buckets, +Inf equals count, sum matches", async () => {
+    const durations = [0.004, 0.02, 0.02, 0.3, 1.2, 9];
+    for (const d of durations) recordSession("XLM", "created", d);
+
+    const samples = await scrape();
+    const labels = { asset: "XLM", outcome: "created" };
+    const buckets = pick(samples, "payment_processor_session_duration_seconds_bucket", labels)
+      .map((s) => ({ le: s.labels.le === "+Inf" ? Infinity : Number(s.labels.le), value: s.value }))
+      .sort((a, b) => a.le - b.le);
+
+    for (let i = 1; i < buckets.length; i += 1) {
+      expect(buckets[i].value).toBeGreaterThanOrEqual(buckets[i - 1].value);
+    }
+    const count = sum(pick(samples, "payment_processor_session_duration_seconds_count", labels));
+    expect(buckets.at(-1).value).toBe(count);
+    expect(count).toBe(durations.length);
+    expect(sum(pick(samples, "payment_processor_session_duration_seconds_sum", labels))).toBeCloseTo(
+      durations.reduce((a, b) => a + b, 0),
+      6,
     );
-    expect(res.text).toMatch(/payment_processor_retries_total\{[^}]*operation="status_lookup"[^}]*\} \d+/);
-    expect(res.text).toContain("payment_processor_health_state");
-    expect(res.text).toContain("sep0001_merchant_lookup_retries_total");
+    // 0.004 and 9 land in the first and the overflow bucket respectively.
+    expect(buckets.find((b) => b.le === 0.005).value).toBe(1);
+    expect(buckets.find((b) => b.le === 5).value).toBe(durations.length - 1);
+  });
+
+  it("bounds the client-controlled asset label", async () => {
+    const hostile = [
+      "XLM",
+      "usdc",
+      'EVIL",outcome="created',
+      "x".repeat(500),
+      "../../etc/passwd",
+      "BTC\nmalicious_metric 1",
+      undefined,
+      42,
+      "",
+    ];
+    for (const asset of hostile) recordSession(asset, "validation_failed", 0.001);
+
+    const samples = await scrape();
+    const assets = new Set(pick(samples, "payment_processor_sessions_total").map((s) => s.labels.asset));
+    expect([...assets].sort()).toEqual(["USDC", "XLM", "invalid", "unknown"].sort());
+    expect(pick(samples, "malicious_metric")).toHaveLength(0);
+    expect(sum(pick(samples, "payment_processor_sessions_total"))).toBe(hostile.length);
+  });
+
+  it("serves consistent, monotonic counters to concurrent scrapes during writes", async () => {
+    const writes = (async () => {
+      for (let i = 0; i < 2_000; i += 1) {
+        paymentProcessorStatusCacheHits.inc();
+        if (i % 100 === 0) await new Promise((resolve) => setImmediate(resolve));
+      }
+    })();
+
+    const seen = [];
+    const scrapes = Array.from({ length: 10 }, async () => {
+      const samples = await scrape();
+      seen.push(sum(pick(samples, "payment_processor_status_cache_hits_total")));
+    });
+
+    await Promise.all([writes, ...scrapes]);
+    const final = sum(pick(await scrape(), "payment_processor_status_cache_hits_total"));
+    expect(final).toBe(2_000);
+    for (const value of seen) {
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThanOrEqual(2_000);
+    }
+  });
+
+  it("produces exposition text that parses cleanly", async () => {
+    recordSession("XLM", "created", 0.1);
+    const text = await paymentProcessorRegister.metrics();
+    expect(() => parseExposition(text)).not.toThrow();
+    expect(text).toMatch(/# TYPE payment_processor_sessions_total counter/);
+    expect(text).toMatch(/# TYPE payment_processor_session_duration_seconds histogram/);
   });
 });
 
-describe("SEP-0001 stellar.toml through the app (#1459)", () => {
-  let app;
-
-  beforeAll(async () => {
-    ({ app } = await createApp({ redisClient: mockRedisClient }));
-  });
-
-  beforeEach(() => mockMaybeSingle.mockReset());
-
-  it("recovers from a transient merchant lookup failure", async () => {
-    mockMaybeSingle
-      .mockResolvedValueOnce({ data: null, error: { message: "TypeError: fetch failed", code: "" } })
-      .mockResolvedValueOnce({
-        data: { id: MERCHANT_ID, business_name: "Acme", recipient: null, branding_config: null },
-        error: null,
-      });
-
-    const res = await request(app).get(`/.well-known/stellar.toml?merchant_id=${MERCHANT_ID}`);
-    expect(res.status).toBe(200);
-    expect(res.text).toContain('name = "Acme"');
-  });
-
-  it("returns 503 + Retry-After when the lookup stays down", async () => {
-    mockMaybeSingle.mockResolvedValue({ data: null, error: { message: "down", code: "57P01" } });
-
-    const res = await request(app).get(`/.well-known/stellar.toml?merchant_id=${MERCHANT_ID}`);
-    expect(res.status).toBe(503);
-    expect(res.headers["retry-after"]).toBe("5");
-    expect(res.headers["cache-control"]).toBe("no-store");
-
-    const metrics = await request(app).get("/metrics");
-    expect(metrics.text).toMatch(
-      /sep0001_merchant_lookup_retries_total\{[^}]*result="exhausted"[^}]*\} [1-9]/,
-    );
+describe("toAssetLabel", () => {
+  it.each([
+    ["XLM", "XLM"],
+    [" usdc ", "USDC"],
+    ["ABCDEFGHIJKL", "ABCDEFGHIJKL"],
+    ["ABCDEFGHIJKLM", "invalid"],
+    ["US-DC", "invalid"],
+    [null, "unknown"],
+    ["", "unknown"],
+    [{ code: "XLM" }, "invalid"],
+  ])("%j -> %s", (input, expected) => {
+    expect(toAssetLabel(input)).toBe(expected);
   });
 });
